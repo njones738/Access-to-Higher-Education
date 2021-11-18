@@ -1,0 +1,603 @@
+---
+title: "SSS"
+author: "Nathaniel Jones"
+date: "3/14/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+```
+
+```{r read in dataset and set the mood, echo=FALSE}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+```
+
+```{r function}
+Hist_o_matic <- function(vari,bin_by,bin_min,bin_max,title,cexain=1.7) { # FOR ONE QUANT
+                            bins1<- seq(bin_min,bin_max,by=bin_by)
+                            tit_le = paste("Figure 1: Histogram of the",(title)," (n = ",as.character(length(vari)),")",sep=" ")
+                            h<-hist(vari, 
+                                    breaks=bins1,
+                                    plot=FALSE)
+                            h$counts=round(h$counts/sum(h$counts),2)
+                            
+                            plot(h, main=tit_le,
+                                 cex.main=cexain,
+                                 xlab=title,
+                                 ylab="Relative Frequency",
+                                 cex.lab=1.5,            
+                                 ylim=c(0,((max(h$counts))+(max(h$counts)*(.10)))),
+                                 axes=FALSE,      
+                                 labels=TRUE,
+                                 col = sample(personal_Palette,1))       
+                            axis(2, cex.axis=1.5) 
+                            axis(1,at=bins1, labels=bins1, cex.axis=1.5) 
+}
+plot_this_box <- function(vari,title) { # FOR ONE QUANT
+                                       tit_le = paste("Figure 1: Boxplot of the",(title)," (n = ",as.character(length(vari)),")",sep=" ")
+                                       boxplot(vari,
+                                               main=tit_le,
+                                               cex.main=1.7,
+                                               ylab=title,
+                                               cex.lab=1.5,
+                                               boxwex=0.4, 
+                                               cex.axis=1.5,
+                                               col=sample(personal_Palette,1))		
+                                       text(y = boxplot.stats(vari)$stats, 
+                                       labels = round(boxplot.stats(vari)$stats,1), x = 1.20, cex = 1.5)
+                                       text(y = round(max(vari),1), labels = round(max(vari),1), x = 1.20, cex = 1.5)
+                                       points(mean(vari),pch=7, cex=1.5) 
+}
+label_me_this <- function(title,xlbl,ylbl) { # label a plot
+  return(as.expression())
+}
+# boxplot for ONE QUAL ghost-template.
+#bpName <- ggplot(data = df,
+#                 mapping = aes( x=(), stat = "count" )) +
+#          geom_bar(col = "black", fill = sample(personal_Palette,1)) + label_me_this("title","xlabel","ylabel")
+```
+
+```{r clean columns with missing values}
+work_this <- sapply(CollegeSC18,function(x)sum(is.na(x)))
+
+#sapply(CollegeSC18,x, sum(is.na(x)))
+#sapply(CollegeSC18,function(x)length(is.na(x)))
+#length(is.na(CollegeSC18$SCH_DEG))
+
+sum(!is.na(CollegeSC18$UNITID))
+
+CSC18 <- c(seq(sum(!is.na(CollegeSC18$UNITID))))
+
+for (i in 1:length(CollegeSC18)) {
+  if (sum(!is.na(CollegeSC18[i])) > 0) {
+    CSC18 <- cbind(CSC18,CollegeSC18[i])
+  }
+}
+
+CSC18_BAD <- c(seq(sum(!is.na(CollegeSC18$UNITID))))
+
+for (i in 1:length(CollegeSC18)) {
+  if (sum(!is.na(CollegeSC18[i])) == 0) {
+    CSC18_BAD <- cbind(CSC18_BAD,CollegeSC18[i])
+  }
+}
+
+CSC18
+CSC18_BAD
+
+sapply(CSC18,function(x)sum(!is.na(x)))
+sapply(CSC18_BAD,function(x)sum(!is.na(x)))
+```
+
+```{r subset out undesired columns}
+CSC18 %<>% select(-POOLYRS, -POOLYRS200, -POOLYRSRET_FT, -POOLYRSRET_PT, -POOLYRS100, -POOLYRSOM_FTFT, -POOLYRSOM_PTFT, -POOLYRSOM_FTNFT, -POOLYRSOM_PTNFT, -POOLYRSOM_ALL, -POOLYRSOM_FIRSTTIME, -POOLYRSOM_NOTFIRSTTIME, -POOLYRSOM_FULLTIME, -POOLYRSOM_PARTTIME, -POOLYRS_FTFTAIDPCT, -POOLYRS_PLUSPCT, -C150_4_POOLED, -C150_L4_POOLED, -D150_4_POOLED, -D150_L4_POOLED, -C200_4_POOLED, -C200_L4_POOLED, -D200_4_POOLED, -D200_L4_POOLED, -DEBT_MDN_SUPP, -GRAD_DEBT_MDN_SUPP, -GRAD_DEBT_MDN10YR_SUPP, -C150_L4_POOLED_SUPP, -C150_4_POOLED_SUPP, -C200_L4_POOLED_SUPP, -C200_4_POOLED_SUPP, -RET_FT4_POOLED, -RET_FTL4_POOLED, -RET_PT4_POOLED, -RET_PTL4_POOLED, -RET_FT_DEN4_POOLED, -RET_FT_DENL4_POOLED, -RET_PT_DEN4_POOLED, -RET_PT_DENL4_POOLED, -RET_FT4_POOLED_SUPP, -RET_FTL4_POOLED_SUPP, -RET_PT4_POOLED_SUPP, -RET_PTL4_POOLED_SUPP, -TRANS_4_POOLED, -TRANS_L4_POOLED, -DTRANS_4_POOLED, -DTRANS_L4_POOLED, -TRANS_4_POOLED_SUPP, -TRANS_L4_POOLED_SUPP, -C100_4_POOLED, -C100_L4_POOLED, -D100_4_POOLED, -D100_L4_POOLED, -C100_4_POOLED_SUPP, -C100_L4_POOLED_SUPP, -OMACHT6_FTFT_POOLED, -OMAWDP6_FTFT_POOLED, -OMACHT8_FTFT_POOLED, -OMAWDP8_FTFT_POOLED, -OMENRYP8_FTFT_POOLED, -OMENRAP8_FTFT_POOLED, -OMENRUP8_FTFT_POOLED, -OMACHT6_PTFT_POOLED, -OMAWDP6_PTFT_POOLED, -OMACHT8_PTFT_POOLED, -OMAWDP8_PTFT_POOLED, -OMENRYP8_PTFT_POOLED, -OMENRAP8_PTFT_POOLED, -OMENRUP8_PTFT_POOLED, -OMACHT6_FTNFT_POOLED, -OMAWDP6_FTNFT_POOLED, -OMACHT8_FTNFT_POOLED, -OMAWDP8_FTNFT_POOLED, -OMENRYP8_FTNFT_POOLED, -OMENRAP8_FTNFT_POOLED, -OMENRUP8_FTNFT_POOLED, -OMACHT6_PTNFT_POOLED, -OMAWDP6_PTNFT_POOLED, -OMACHT8_PTNFT_POOLED, -OMAWDP8_PTNFT_POOLED, -OMENRYP8_PTNFT_POOLED, -OMENRAP8_PTNFT_POOLED, -OMENRUP8_PTNFT_POOLED, -OMAWDP6_FTFT_POOLED_SUPP, -OMAWDP8_FTFT_POOLED_SUPP, -OMENRYP8_FTFT_POOLED_SUPP, -OMENRAP8_FTFT_POOLED_SUPP, -OMENRUP8_FTFT_POOLED_SUPP, -OMAWDP6_PTFT_POOLED_SUPP, -OMAWDP8_PTFT_POOLED_SUPP, -OMENRYP8_PTFT_POOLED_SUPP, -OMENRAP8_PTFT_POOLED_SUPP, -OMENRUP8_PTFT_POOLED_SUPP, -OMAWDP6_FTNFT_POOLED_SUPP, -OMAWDP8_FTNFT_POOLED_SUPP, -OMENRYP8_FTNFT_POOLED_SUPP, -OMENRAP8_FTNFT_POOLED_SUPP, -OMENRUP8_FTNFT_POOLED_SUPP, -OMAWDP6_PTNFT_POOLED_SUPP, -OMAWDP8_PTNFT_POOLED_SUPP, -OMENRYP8_PTNFT_POOLED_SUPP, -OMENRAP8_PTNFT_POOLED_SUPP, -OMENRUP8_PTNFT_POOLED_SUPP, -OMENRYP_ALL_POOLED_SUPP, -OMENRAP_ALL_POOLED_SUPP, -OMAWDP8_ALL_POOLED_SUPP, -OMENRUP_ALL_POOLED_SUPP, -OMENRYP_FIRSTTIME_POOLED_SUPP, -OMENRAP_FIRSTTIME_POOLED_SUPP, -OMAWDP8_FIRSTTIME_POOLED_SUPP, -OMENRUP_FIRSTTIME_POOLED_SUPP, -OMENRYP_NOTFIRSTTIME_POOLED_SUPP, -OMENRAP_NOTFIRSTTIME_POOLED_SUPP, -OMAWDP8_NOTFIRSTTIME_POOLED_SUPP, -OMENRUP_NOTFIRSTTIME_POOLED_SUPP, -OMENRYP_FULLTIME_POOLED_SUPP, -OMENRAP_FULLTIME_POOLED_SUPP, -OMAWDP8_FULLTIME_POOLED_SUPP, -OMENRUP_FULLTIME_POOLED_SUPP, -OMENRYP_PARTTIME_POOLED_SUPP, -OMENRAP_PARTTIME_POOLED_SUPP, -OMAWDP8_PARTTIME_POOLED_SUPP, -OMENRUP_PARTTIME_POOLED_SUPP, -FTFTPCTPELL_POOLED_SUPP, -FTFTPCTFLOAN_POOLED_SUPP, -SCUGFFN_POOLED, -PPLUS_PCT_LOW_POOLED_SUPP, -PPLUS_PCT_HIGH_POOLED_SUPP, -PLUS_DEBT_INST_COMP_MD_SUPP, -PLUS_DEBT_INST_COMP_MDPAY10_SUPP, -PLUS_DEBT_ALL_COMP_MD_SUPP, -PLUS_DEBT_ALL_COMP_MDPAY10_SUPP, -BBRR2_FED_UG_N_SUPP, -BBRR2_FED_UG_DFLT_SUPP)
+
+CSC18 %<>% select(-BBRR2_FED_UG_DLNQ_SUPP, -BBRR2_FED_UG_FBR_SUPP, -BBRR2_FED_UG_DFR_SUPP, -BBRR2_FED_UG_NOPROG_SUPP, -BBRR2_FED_UG_MAKEPROG_SUPP, -BBRR2_FED_UG_PAIDINFULL_SUPP, -BBRR2_FED_UG_DISCHARGE_SUPP, -BBRR2_FED_UGCOMP_N_SUPP, -BBRR2_FED_UGCOMP_DFLT_SUPP, -BBRR2_FED_UGCOMP_DLNQ_SUPP, -BBRR2_FED_UGCOMP_FBR_SUPP, -BBRR2_FED_UGCOMP_DFR_SUPP, -BBRR2_FED_UGCOMP_NOPROG_SUPP, -BBRR2_FED_UGCOMP_MAKEPROG_SUPP, -BBRR2_FED_UGCOMP_PAIDINFULL_SUPP, -BBRR2_FED_UGCOMP_DISCHARGE_SUPP,-CIPCODE1, -CIPCODE2, -CIPCODE3, -CIPCODE4, -CIPCODE5, -CIPCODE6, -CIPTITLE1, -CIPTITLE2, -CIPTITLE3, -CIPTITLE4, -CIPTITLE5, -CIPTITLE6, -CIPTFBS1, -CIPTFBS2, -CIPTFBS3, -CIPTFBS4, -CIPTFBS5, -CIPTFBS6, -CIPTFBSANNUAL1, -CIPTFBSANNUAL2, -CIPTFBSANNUAL3, -CIPTFBSANNUAL4, -CIPTFBSANNUAL5, -CIPTFBSANNUAL6, -MTHCMP1, -MTHCMP2, -MTHCMP3, -MTHCMP4, -MTHCMP5, -MTHCMP6,-CSC18)
+#names(CSC18)
+```
+
+```{r Correct the type for the Qualitative data}
+CSC18 %<>% mutate(UNITID = as.character(UNITID), OPEID = as.character(OPEID), OPEID6 = as.character(OPEID6),
+                  INSTNM = as.character(INSTNM), ALIAS = as.character(ALIAS),
+                  CONTROL = as.character(CONTROL), ICLEVEL = as.factor(ICLEVEL),
+                  CITY = as.character(CITY), ZIP = as.character(ZIP),
+                  STABBR = as.character(STABBR), ST_FIPS = as.character(ST_FIPS), REGION = as.character(REGION),
+                  ACCREDAGENCY = as.character(ACCREDAGENCY), ACCREDCODE = as.character(ACCREDCODE),
+                  INSTURL = as.character(INSTURL), NPCURL = as.character(NPCURL),
+                  MAIN = as.character(MAIN), PREDDEG = as.factor(PREDDEG), HIGHDEG = as.factor(HIGHDEG),
+                  LOCALE = as.factor(LOCALE), CCBASIC = as.factor(CCBASIC), CCUGPROF = as.factor(CCUGPROF), CCSIZSET = as.factor(CCSIZSET),
+                  CURROPER = as.factor(CURROPER),
+                  OPEFLAG = as.factor(OPEFLAG),
+                  SCHTYPE = as.character(SCHTYPE),
+                  HCM2 = as.character(HCM2),
+                  T4APPROVALDATE = as.character(T4APPROVALDATE),
+                  OPENADMP = as.character(OPENADMP),
+                  CIP01BACHL = as.factor(CIP01BACHL), CIP03BACHL = as.factor(CIP03BACHL), 
+                  CIP04BACHL = as.factor(CIP04BACHL), CIP05BACHL = as.factor(CIP05BACHL), 
+                  CIP09BACHL = as.factor(CIP09BACHL), CIP10BACHL = as.factor(CIP10BACHL),
+                  CIP11BACHL = as.factor(CIP11BACHL), CIP12BACHL = as.factor(CIP12BACHL),
+                  CIP13BACHL = as.factor(CIP13BACHL), CIP14BACHL = as.factor(CIP14BACHL),
+                  CIP15BACHL = as.factor(CIP15BACHL), CIP16BACHL = as.factor(CIP16BACHL),
+                  CIP19BACHL = as.factor(CIP19BACHL), CIP22BACHL = as.factor(CIP22BACHL),
+                  CIP23BACHL = as.factor(CIP23BACHL), CIP24BACHL = as.factor(CIP24BACHL),
+                  CIP25BACHL = as.factor(CIP25BACHL), CIP26BACHL = as.factor(CIP26BACHL),
+                  CIP27BACHL = as.factor(CIP27BACHL), CIP29BACHL = as.factor(CIP29BACHL),
+                  CIP30BACHL = as.factor(CIP30BACHL), CIP31BACHL = as.factor(CIP31BACHL),
+                  CIP38BACHL = as.factor(CIP38BACHL), CIP39BACHL = as.factor(CIP39BACHL),
+                  CIP40BACHL = as.factor(CIP40BACHL), CIP41BACHL = as.factor(CIP41BACHL),
+                  CIP42BACHL = as.factor(CIP42BACHL), CIP43BACHL = as.factor(CIP43BACHL),
+                  CIP44BACHL = as.factor(CIP44BACHL), CIP45BACHL = as.factor(CIP45BACHL),
+                  CIP46BACHL = as.factor(CIP46BACHL), CIP47BACHL = as.factor(CIP47BACHL),
+                  CIP48BACHL = as.factor(CIP48BACHL), CIP50BACHL = as.factor(CIP50BACHL),
+                  CIP51BACHL = as.factor(CIP51BACHL), CIP52BACHL = as.factor(CIP52BACHL),
+                  CIP54BACHL = as.factor(CIP54BACHL), CIP49BACHL = as.factor(CIP49BACHL),
+                  CIP01ASSOC = as.factor(CIP01ASSOC), CIP03ASSOC = as.factor(CIP03ASSOC),
+                  CIP04ASSOC = as.factor(CIP04ASSOC), CIP05ASSOC = as.factor(CIP05ASSOC),
+                  CIP09ASSOC = as.factor(CIP09ASSOC), CIP10ASSOC = as.factor(CIP10ASSOC),
+                  CIP11ASSOC = as.factor(CIP11ASSOC), CIP12ASSOC = as.factor(CIP12ASSOC),
+                  CIP13ASSOC = as.factor(CIP13ASSOC), CIP14ASSOC = as.factor(CIP14ASSOC),
+                  CIP15ASSOC = as.factor(CIP15ASSOC), CIP16ASSOC = as.factor(CIP16ASSOC),
+                  CIP19ASSOC = as.factor(CIP19ASSOC), CIP22ASSOC = as.factor(CIP22ASSOC),
+                  CIP23ASSOC = as.factor(CIP23ASSOC), CIP24ASSOC = as.factor(CIP24ASSOC),
+                  CIP25ASSOC = as.factor(CIP25ASSOC), CIP26ASSOC = as.factor(CIP26ASSOC),
+                  CIP27ASSOC = as.factor(CIP27ASSOC), CIP29ASSOC = as.factor(CIP29ASSOC),
+                  CIP30ASSOC = as.factor(CIP30ASSOC), CIP31ASSOC = as.factor(CIP31ASSOC),
+                  CIP38ASSOC = as.factor(CIP38ASSOC), CIP39ASSOC = as.factor(CIP39ASSOC),
+                  CIP40ASSOC = as.factor(CIP40ASSOC), CIP41ASSOC = as.factor(CIP41ASSOC),
+                  CIP42ASSOC = as.factor(CIP42ASSOC), CIP43ASSOC = as.factor(CIP43ASSOC),
+                  CIP44ASSOC = as.factor(CIP44ASSOC), CIP45ASSOC = as.factor(CIP45ASSOC),
+                  CIP46ASSOC = as.factor(CIP46ASSOC), CIP47ASSOC = as.factor(CIP47ASSOC),
+                  CIP48ASSOC = as.factor(CIP48ASSOC), CIP49ASSOC = as.factor(CIP49ASSOC),
+                  CIP50ASSOC = as.factor(CIP50ASSOC), CIP51ASSOC = as.factor(CIP51ASSOC),
+                  CIP52ASSOC = as.factor(CIP52ASSOC), CIP54ASSOC = as.factor(CIP54ASSOC),
+                  CIP01CERT4 = as.factor(CIP01CERT4), CIP03CERT4 = as.factor(CIP03CERT4),
+                  CIP04CERT4 = as.factor(CIP04CERT4), CIP05CERT4 = as.factor(CIP05CERT4),
+                  CIP09CERT4 = as.factor(CIP09CERT4), CIP10CERT4 = as.factor(CIP10CERT4),
+                  CIP11CERT4 = as.factor(CIP11CERT4), CIP12CERT4 = as.factor(CIP12CERT4),
+                  CIP13CERT4 = as.factor(CIP13CERT4), CIP14CERT4 = as.factor(CIP14CERT4),
+                  CIP15CERT4 = as.factor(CIP15CERT4), CIP16CERT4 = as.factor(CIP16CERT4),
+                  CIP19CERT4 = as.factor(CIP19CERT4), CIP22CERT4 = as.factor(CIP22CERT4),
+                  CIP23CERT4 = as.factor(CIP23CERT4), CIP24CERT4 = as.factor(CIP24CERT4),
+                  CIP25CERT4 = as.factor(CIP25CERT4), CIP26CERT4 = as.factor(CIP26CERT4),
+                  CIP27CERT4 = as.factor(CIP27CERT4), CIP29CERT4 = as.factor(CIP29CERT4),
+                  CIP30CERT4 = as.factor(CIP30CERT4), CIP31CERT4 = as.factor(CIP31CERT4),
+                  CIP38CERT4 = as.factor(CIP38CERT4), CIP39CERT4 = as.factor(CIP39CERT4),
+                  CIP40CERT4 = as.factor(CIP40CERT4), CIP41CERT4 = as.factor(CIP41CERT4),
+                  CIP42CERT4 = as.factor(CIP42CERT4), CIP43CERT4 = as.factor(CIP43CERT4),
+                  CIP44CERT4 = as.factor(CIP44CERT4), CIP45CERT4 = as.factor(CIP45CERT4),
+                  CIP46CERT4 = as.factor(CIP46CERT4), CIP47CERT4 = as.factor(CIP47CERT4),
+                  CIP48CERT4 = as.factor(CIP48CERT4), CIP49CERT4 = as.factor(CIP49CERT4),
+                  CIP50CERT4 = as.factor(CIP50CERT4), CIP51CERT4 = as.factor(CIP51CERT4),
+                  CIP52CERT4 = as.factor(CIP52CERT4), CIP54CERT4 = as.factor(CIP54CERT4),
+                  CIP01CERT2 = as.factor(CIP01CERT2), CIP03CERT2 = as.factor(CIP03CERT2),
+                  CIP04CERT2 = as.factor(CIP04CERT2), CIP05CERT2 = as.factor(CIP05CERT2),
+                  CIP09CERT2 = as.factor(CIP09CERT2), CIP10CERT2 = as.factor(CIP10CERT2),
+                  CIP11CERT2 = as.factor(CIP11CERT2), CIP12CERT2 = as.factor(CIP12CERT2),
+                  CIP13CERT2 = as.factor(CIP13CERT2), CIP14CERT2 = as.factor(CIP14CERT2),
+                  CIP15CERT2 = as.factor(CIP15CERT2), CIP16CERT2 = as.factor(CIP16CERT2),
+                  CIP19CERT2 = as.factor(CIP19CERT2), CIP22CERT2 = as.factor(CIP22CERT2),
+                  CIP23CERT2 = as.factor(CIP23CERT2), CIP24CERT2 = as.factor(CIP24CERT2),
+                  CIP25CERT2 = as.factor(CIP25CERT2), CIP26CERT2 = as.factor(CIP26CERT2),
+                  CIP27CERT2 = as.factor(CIP27CERT2), CIP29CERT2 = as.factor(CIP29CERT2),
+                  CIP30CERT2 = as.factor(CIP30CERT2), CIP31CERT2 = as.factor(CIP31CERT2),
+                  CIP38CERT2 = as.factor(CIP38CERT2), CIP39CERT2 = as.factor(CIP39CERT2),
+                  CIP40CERT2 = as.factor(CIP40CERT2), CIP41CERT2 = as.factor(CIP41CERT2),
+                  CIP42CERT2 = as.factor(CIP42CERT2), CIP43CERT2 = as.factor(CIP43CERT2),
+                  CIP44CERT2 = as.factor(CIP44CERT2), CIP45CERT2 = as.factor(CIP45CERT2),
+                  CIP46CERT2 = as.factor(CIP46CERT2), CIP47CERT2 = as.factor(CIP47CERT2),
+                  CIP48CERT2 = as.factor(CIP48CERT2), CIP49CERT2 = as.factor(CIP49CERT2),
+                  CIP50CERT2 = as.factor(CIP50CERT2), CIP51CERT2 = as.factor(CIP51CERT2),
+                  CIP52CERT2 = as.factor(CIP52CERT2), CIP54CERT2 = as.factor(CIP54CERT2),
+                  CIP01CERT1 = as.factor(CIP01CERT1), CIP03CERT1 = as.factor(CIP03CERT1),
+                  CIP04CERT1 = as.factor(CIP04CERT1), CIP05CERT1 = as.factor(CIP05CERT1),
+                  CIP09CERT1 = as.factor(CIP09CERT1), CIP10CERT1 = as.factor(CIP10CERT1),
+                  CIP11CERT1 = as.factor(CIP11CERT1), CIP12CERT1 = as.factor(CIP12CERT1),
+                  CIP13CERT1 = as.factor(CIP13CERT1), CIP14CERT1 = as.factor(CIP14CERT1),
+                  CIP15CERT1 = as.factor(CIP15CERT1), CIP16CERT1 = as.factor(CIP16CERT1),
+                  CIP19CERT1 = as.factor(CIP19CERT1), CIP22CERT1 = as.factor(CIP22CERT1),
+                  CIP23CERT1 = as.factor(CIP23CERT1), CIP24CERT1 = as.factor(CIP24CERT1),
+                  CIP25CERT1 = as.factor(CIP25CERT1), CIP26CERT1 = as.factor(CIP26CERT1),
+                  CIP27CERT1 = as.factor(CIP27CERT1), CIP29CERT1 = as.factor(CIP29CERT1),
+                  CIP30CERT1 = as.factor(CIP30CERT1), CIP31CERT1 = as.factor(CIP31CERT1),
+                  CIP38CERT1 = as.factor(CIP38CERT1), CIP39CERT1 = as.factor(CIP39CERT1),
+                  CIP40CERT1 = as.factor(CIP40CERT1), CIP41CERT1 = as.factor(CIP41CERT1),
+                  CIP42CERT1 = as.factor(CIP42CERT1), CIP43CERT1 = as.factor(CIP43CERT1),
+                  CIP44CERT1 = as.factor(CIP44CERT1), CIP45CERT1 = as.factor(CIP45CERT1),
+                  CIP46CERT1 = as.factor(CIP46CERT1), CIP47CERT1 = as.factor(CIP47CERT1),
+                  CIP48CERT1 = as.factor(CIP48CERT1), CIP49CERT1 = as.factor(CIP49CERT1),
+                  CIP50CERT1 = as.factor(CIP50CERT1), CIP51CERT1 = as.factor(CIP51CERT1),
+                  CIP52CERT1 = as.factor(CIP52CERT1), CIP54CERT1 = as.factor(CIP54CERT1),
+                  DISTANCEONLY = as.factor(DISTANCEONLY),
+                  HBCU = as.factor(HBCU), PBI = as.factor(PBI),
+                  ANNHI = as.factor(ANNHI), TRIBAL = as.factor(TRIBAL),
+                  AANAPII = as.factor(AANAPII), HSI = as.factor(HSI),
+                  NANTI = as.factor(NANTI), RELAFFIL = as.factor(RELAFFIL),
+                  MENONLY = as.factor(MENONLY), WOMENONLY = as.factor(WOMENONLY))
+```
+
+```{r Qualitative variable frequency and boxplot}
+Qual_Var <- CSC18 %>% select(UNITID, OPEID, OPEID6, INSTNM, CITY, ZIP, STABBR, ST_FIPS, REGION, 
+                             ACCREDAGENCY, ACCREDCODE, OPEFLAG, T4APPROVALDATE, OPENADMP, HCM2, 
+                             MAIN, CONTROL, ICLEVEL, SCHTYPE, CURROPER, PREDDEG, HIGHDEG, LOCALE, 
+                             CCBASIC, CCUGPROF, CCSIZSET, HBCU, PBI, ANNHI, TRIBAL, AANAPII, HSI, 
+                             NANTI, MENONLY, WOMENONLY, DISTANCEONLY)
+
+freq_table <- gather(Qual_Var, "var", "value",-UNITID,-OPEID,-OPEID6,-INSTNM,-ACCREDAGENCY) %>%
+              count(var, value) %>%
+              group_by(var) %>%
+              mutate(prop = prop.table(n))
+
+freq_table %>% filter(var == "STABBR") %>% arrange(desc(prop))
+Boxplot_STABBR <- ggplot(data = Qual_Var,
+                         mapping = aes( x=((STABBR)), stat = "count" )) +
+                  geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                  ggtitle(("STABBR")) + xlab("State") + ylab("count") #+ 
+#                  geom_text(aes(label = n),vjust=-0.5)
+Boxplot_STABBR
+freq_table %>% filter(var == "REGION") %>% arrange(desc(value))
+Boxplot_REGION <- ggplot(data = Qual_Var,
+                         mapping = aes( x=((REGION)), stat = "count" )) +
+                  geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                  ggtitle(("REGION")) + xlab("xlbl") + ylab("ylbl") #+ 
+#                  geom_text(aes(label = n),vjust=-0.5)
+Boxplot_REGION
+freq_table %>% filter(var == "ACCREDCODE") %>% arrange(desc(prop))
+Boxplot_ACCREDCODE <- ggplot(data = Qual_Var,
+                             mapping = aes( x=((ACCREDCODE)), stat = "count" )) +
+                  geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                  ggtitle(("ACCREDCODE")) + xlab("xlbl") + ylab("ylbl") #+ 
+#                  geom_text(aes(label = n),vjust=-0.5)
+Boxplot_ACCREDCODE
+freq_table %>% filter(var == "OPEFLAG") %>% arrange(desc(value))
+Boxplot_OPEFLAG <- ggplot(data = Qual_Var,
+                          mapping = aes( x=((OPEFLAG)), stat = "count" )) +
+                   geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                   ggtitle(("OPEFLAG")) + xlab("xlbl") + ylab("ylbl") #+
+#                   geom_text(aes(label = n),vjust=-0.5)
+Boxplot_OPEFLAG
+freq_table %>% filter(var == "T4APPROVALDATE") %>% arrange(desc(prop))
+Boxplot_T4APPROVALDATE <- ggplot(data = Qual_Var,
+                         mapping = aes( x=((T4APPROVALDATE)), stat = "count" )) +
+                  geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                  ggtitle(("T4APPROVALDATE")) + xlab("xlbl") + ylab("ylbl") +                    
+#                  geom_text(aes(label = n),vjust=-0.5) +
+                  theme(axis.text.x = element_text(angle = 45,hjust = 1))
+Boxplot_T4APPROVALDATE
+freq_table %>% filter(var == "OPENADMP") %>% arrange(desc(value))
+Boxplot_OPENADMP <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((OPENADMP)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("OPENADMP")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_OPENADMP
+freq_table %>% filter(var == "HCM2") %>% arrange(desc(value))
+Boxplot_HCM2 <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((HCM2)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("HCM2")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_HCM2
+freq_table %>% filter(var == "MAIN") %>% arrange(desc(value))
+Boxplot_MAIN <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((MAIN)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("MAIN")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_MAIN
+freq_table %>% filter(var == "CONTROL") %>% arrange(desc(value))
+Boxplot_CONTROL <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((CONTROL)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("CONTROL")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_CONTROL
+freq_table %>% filter(var == "ICLEVEL") %>% arrange(desc(value))
+Boxplot_ICLEVEL <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((ICLEVEL)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("ICLEVEL")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_ICLEVEL
+freq_table %>% filter(var == "SCHTYPE") %>% arrange(desc(value))
+Boxplot_SCHTYPE <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((SCHTYPE)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("SCHTYPE")) + xlab("xlbl") + ylab("ylbl")# +                    
+ #         geom_text(aes(label = n),vjust=-0.5)
+Boxplot_SCHTYPE
+freq_table %>% filter(var == "CURROPER") %>% arrange(desc(value)) 
+Boxplot_CURROPER <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((CURROPER)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("CURROPER")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_CURROPER
+freq_table %>% filter(var == "PREDDEG") %>% arrange(desc(value))
+Boxplot_PREDDEG <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((PREDDEG)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("PREDDEG")) + xlab("xlbl") + ylab("ylbl") #+                    
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_PREDDEG
+freq_table %>% filter(var == "HIGHDEG") %>% arrange(desc(value))
+Boxplot_HIGHDEG <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((HIGHDEG)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("HIGHDEG")) + xlab("xlbl") + ylab("ylbl")# +                  
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_HIGHDEG
+freq_table %>% filter(var == "LOCALE") %>% arrange(desc(value))
+Boxplot_LOCALE <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((LOCALE)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("LOCALE")) + xlab("xlbl") + ylab("ylbl") #+                  
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_LOCALE
+freq_table %>% filter(var == "CCBASIC") %>% arrange(desc(prop))
+Boxplot_CCBASIC <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((CCBASIC)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("CCBASIC")) + xlab("xlbl") + ylab("ylbl") #+                 
+       #   geom_text(aes(label = n),vjust=-0.5)
+Boxplot_CCBASIC
+freq_table %>% filter(var == "CCUGPROF") %>% arrange(desc(prop))
+Boxplot_CCUGPROF <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((CCUGPROF)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("CCUGPROF")) + xlab("xlbl") + ylab("ylbl")# +                 
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_CCUGPROF
+freq_table %>% filter(var == "CCSIZSET") %>% arrange(desc(prop))
+Boxplot_CCSIZSET <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((CCSIZSET)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("CCSIZSET")) + xlab("xlbl") + ylab("ylbl") #+                  
+       #   geom_text(aes(label = n),vjust=-0.5)
+Boxplot_CCSIZSET
+freq_table %>% filter(var == "HBCU") %>% arrange(desc(value))
+Boxplot_HBCU <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((HBCU)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("HBCU")) + xlab("xlbl") + ylab("ylbl") #+                   
+        #  geom_text(aes(label = n),vjust=-0.5)
+Boxplot_HBCU
+freq_table %>% filter(var == "PBI") %>% arrange(desc(value))
+Boxplot_PBI <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((PBI)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("PBI")) + xlab("xlbl") + ylab("ylbl") #+                   
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_PBI
+freq_table %>% filter(var == "ANNHI") %>% arrange(desc(value))
+Boxplot_ANNHI <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((ANNHI)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("ANNHI")) + xlab("xlbl") + ylab("ylbl") #+                 
+     #     geom_text(aes(label = n),vjust=-0.5)
+Boxplot_ANNHI
+freq_table %>% filter(var == "TRIBAL") %>% arrange(desc(value))
+Boxplot_TRIBAL <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((TRIBAL)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("TRIBAL")) + xlab("xlbl") + ylab("ylbl") #+                
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_TRIBAL
+freq_table %>% filter(var == "AANAPII") %>% arrange(desc(value))
+Boxplot_AANAPII <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((AANAPII)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("AANAPII")) + xlab("xlbl") + ylab("ylbl") #+                
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_AANAPII
+freq_table %>% filter(var == "HSI") %>% arrange(desc(value))
+Boxplot_HSI <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((HSI)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("HSI")) + xlab("xlbl") + ylab("ylbl") #+                  
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_HSI
+freq_table %>% filter(var == "NANTI") %>% arrange(desc(value))
+Boxplot_NANTI <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((NANTI)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("NANTI")) + xlab("xlbl") + ylab("ylbl") #+                   
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_NANTI
+freq_table %>% filter(var == "MENONLY") %>% arrange(desc(value))
+Boxplot_MENONLY <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((MENONLY)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("MENONLY")) + xlab("xlbl") + ylab("ylbl") #+                  
+        #  geom_text(aes(label = n),vjust=-0.5)
+Boxplot_MENONLY
+freq_table %>% filter(var == "WOMENONLY") %>% arrange(desc(value))
+Boxplot_WOMENONLY <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((WOMENONLY)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("WOMENONLY")) + xlab("xlbl") + ylab("ylbl") #+                  
+      #    geom_text(aes(label = n),vjust=-0.5)
+Boxplot_WOMENONLY
+freq_table %>% filter(var == "DISTANCEONLY") %>% arrange(desc(value))
+Boxplot_DISTANCEONLY <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((DISTANCEONLY)), stat = "count")) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("DISTANCEONLY")) + xlab("xlbl") + ylab("ylbl") #+                
+       #   geom_text(aes(label = n),vjust=-0.5)
+Boxplot_DISTANCEONLY
+```
+
+```{r}
+CSC18 %>% select(OPEFLAG,SCHTYPE,DISTANCEONLY,CURROPER,) %>% summary()
+
+freq_table %>% filter(var == "OPEFLAG") %>% arrange(desc(value))
+Boxplot_OPEFLAG <- ggplot(data = Qual_Var,
+                          mapping = aes( x=((OPEFLAG)), stat = "count" )) +
+                   geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+                   ggtitle(("OPEFLAG")) + xlab("xlbl") + ylab("ylbl") #+
+#                   geom_text(aes(label = n),vjust=-0.5)
+Boxplot_OPEFLAG
+Boxplot_SCHTYPE <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((SCHTYPE)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("SCHTYPE")) + xlab("xlbl") + ylab("ylbl")# +                    
+ #         geom_text(aes(label = n),vjust=-0.5)
+Boxplot_SCHTYPE
+freq_table %>% filter(var == "OPENADMP") %>% arrange(desc(value))
+Boxplot_OPENADMP <- ggplot(data = Qual_Var,
+                 mapping = aes( x=((OPENADMP)), stat = "count" )) +
+          geom_bar(col = "black", fill = sample(personal_Palette,1)) + 
+          ggtitle(("OPENADMP")) + xlab("xlbl") + ylab("ylbl") #+                    
+#          geom_text(aes(label = n),vjust=-0.5)
+Boxplot_OPENADMP
+
+```
+
+```{r}
+#names(CSC18)
+
+CollegeSC18 #%>% select(INSTNM,CONTROL,MAIN,NUMBRANCH,CIPTITLE1,CIPTITLE2,CIPTITLE3,CIPTITLE4,CIPTITLE5,CIPTITLE6) %>% filter(is.na(CIPTITLE1)==F) %>% group_by(CIPTITLE1)
+
+CollegeSC18 %>% filter(MAIN == 1) %>% group_by(CITY)
+CollegeSC18 %>% filter(MAIN == 0) %>% group_by(OPEID6)
+CollegeSC18 %>% filter(HCM2 == 0) %>% group_by(OPEID6)
+CollegeSC18 %>% group_by(OPEID6)
+HCM2_CSC <- CollegeSC18 %>% select(HCM2)
+
+
+HCM2_freq_table <- gather(HCM2_CSC, "var", "value") %>%
+              count(var, value) %>%
+              group_by(var) %>%
+              mutate(prop = prop.table(n))
+
+HCM2_freq_table
+
+```
+
+```{r}
+hdl <- CSC18 %>% select(INSTNM,BBRR2_FED_UG_DFLT,BBRR2_FED_UG_DLNQ,BBRR2_FED_UG_FBR,BBRR2_FED_UG_DFR,BBRR2_FED_UG_NOPROG,BBRR2_FED_UG_MAKEPROG,BBRR2_FED_UG_PAIDINFULL,BBRR2_FED_UG_DISCHARGE)
+hdl[1:10,] %>% mutate("new_COL" = BBRR2_FED_UG_DFLT + BBRR2_FED_UG_DLNQ + BBRR2_FED_UG_DFR + BBRR2_FED_UG_NOPROG + BBRR2_FED_UG_DISCHARGE)
+
+
+```
+
+```{r}
+asdf <- CollegeSC18 %>% filter(HIGHDEG > 2 & MAIN == 1) %>% select(CONTROL,MAIN,STABBR,CITY)
+
+asdf_freq_table <- gather(asdf, "var", "value") %>%
+              count(var, value) %>%
+              group_by(var) %>%
+              mutate(prop = prop.table(n))
+
+asdf_freq_table %>% filter(var == "CITY")
+
+fdsa <- CollegeSC18 %>% filter(HIGHDEG < 2 & MAIN == 1) %>% select(ICLEVEL)
+
+fdsa_freq_table <- gather(fdsa, "var", "value") %>%
+              count(var, value) %>%
+              group_by(var) %>%
+              mutate(prop = prop.table(n))
+
+fdsa_freq_table
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

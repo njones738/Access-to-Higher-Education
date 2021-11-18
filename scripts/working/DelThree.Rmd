@@ -1,0 +1,169 @@
+---
+title: "Deliverable Three"
+author: "Nathaniel Jones"
+output: word_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+#install.packages("ggpubr") 
+#install.packages("gplots") 
+#install.packages("multcompView") 
+
+library(ggpubr)
+library(gplots)
+library(multcompView)
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+wrapper <- function(x) {
+  round(x,4)
+}
+```
+
+```{r read in dataset and set the mood, echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+```
+
+```{r Subset and clean data,include=F}
+# ALL
+CollegeSC18 %>% select(BBRR2_FED_UG_DFLT,BBRR2_FED_UG_DLNQ,BBRR2_FED_UG_FBR,BBRR2_FED_UG_DFR,BBRR2_FED_UG_NOPROG,
+                       BBRR2_FED_UG_MAKEPROG,BBRR2_FED_UG_PAIDINFULL,BBRR2_FED_UG_DISCHARGE) %>% summary()
+# COMP
+CollegeSC18 %>% select(BBRR2_FED_UGCOMP_DFLT,BBRR2_FED_UGCOMP_DLNQ,BBRR2_FED_UGCOMP_FBR,BBRR2_FED_UGCOMP_DFR,
+                       BBRR2_FED_UGCOMP_NOPROG,BBRR2_FED_UGCOMP_MAKEPROG,BBRR2_FED_UGCOMP_PAIDINFULL,BBRR2_FED_UGCOMP_DISCHARGE) %>% summary()
+# NOCOMP
+CollegeSC18 %>% select(BBRR2_FED_UGNOCOMP_DFLT,BBRR2_FED_UGNOCOMP_DLNQ,BBRR2_FED_UGNOCOMP_FBR,BBRR2_FED_UGNOCOMP_DFR,
+                       BBRR2_FED_UGNOCOMP_NOPROG,BBRR2_FED_UGNOCOMP_MAKEPROG,BBRR2_FED_UGNOCOMP_PAIDINFULL,BBRR2_FED_UGNOCOMP_DISCHARGE) %>% summary()
+# UNK
+CollegeSC18 %>% select(BBRR2_FED_UGUNK_DFLT,BBRR2_FED_UGUNK_DLNQ,BBRR2_FED_UGUNK_FBR,BBRR2_FED_UGUNK_DFR,BBRR2_FED_UGUNK_NOPROG,
+                       BBRR2_FED_UGUNK_MAKEPROG,BBRR2_FED_UGUNK_PAIDINFULL,BBRR2_FED_UGUNK_DISCHARGE) %>% summary()
+
+CSC18 <- CollegeSC18 %>% filter(PCTPELL > .5) %>% mutate("PROP_FLOAN_DefaultDeliquencyNOProgress_ALLUG" = BBRR2_FED_UG_DFLT + BBRR2_FED_UG_DLNQ + BBRR2_FED_UG_NOPROG)#,
+                                                         #"PROP_FLOAN_")
+  
+#)
+
+```
+
+#### `r ftext('Executive Summary', ft)`
+
+|       This is where you will make the claim.
+
+- This is the most important result.
+- The next most important result.
+- The next most important result.
+
+* Table goes here *
+*                 *
+*                 *
+*                 *
+
+I. table of contents   
+II. this will be filled later   
+III. after things are created   
+IV. adskfja;sdkfj;   
+
+#### `r ftext('Visuals and Descriptive Statistics', ft)`
+
+```{r Visuals and Descriptive Statistics }
+
+```
+
+:: ALL ::   
+BBRR2_FED_UG_DFLT,BBRR2_FED_UG_DLNQ,BBRR2_FED_UG_FBR,BBRR2_FED_UG_DFR,BBRR2_FED_UG_NOPROG,BBRR2_FED_UG_MAKEPROG,BBRR2_FED_UG_PAIDINFULL,BBRR2_FED_UG_DISCHARGE   
+:: COMP ::   
+BBRR2_FED_UGCOMP_DFLT,BBRR2_FED_UGCOMP_DLNQ,BBRR2_FED_UGCOMP_FBR,BBRR2_FED_UGCOMP_DFR,BBRR2_FED_UGCOMP_NOPROG,BBRR2_FED_UGCOMP_MAKEPROG,BBRR2_FED_UGCOMP_PAIDINFULL,BBRR2_FED_UGCOMP_DISCHARGE   
+:: NOCOMP ::   
+BBRR2_FED_UGNOCOMP_DFLT,BBRR2_FED_UGNOCOMP_DLNQ,BBRR2_FED_UGNOCOMP_FBR,BBRR2_FED_UGNOCOMP_DFR,BBRR2_FED_UGNOCOMP_NOPROG,BBRR2_FED_UGNOCOMP_MAKEPROG,BBRR2_FED_UGNOCOMP_PAIDINFULL,BBRR2_FED_UGNOCOMP_DISCHARGE   
+:: UNK ::   
+BBRR2_FED_UGUNK_DFLT,BBRR2_FED_UGUNK_DLNQ,BBRR2_FED_UGUNK_FBR,BBRR2_FED_UGUNK_DFR,BBRR2_FED_UGUNK_NOPROG,BBRR2_FED_UGUNK_MAKEPROG,BBRR2_FED_UGUNK_PAIDINFULL,BBRR2_FED_UGUNK_DISCHARGE   
+
+#### `r ftext('Conclusions from the Parametric ANOVA F-test', ft)`
+
+```{r Parametric ANOVA F-test}
+
+```
+
+#### `r ftext('Conclusions from the K-Sample Permutation F-Tests', ft)`
+
+```{r K-Sample Permutation F-Tests}
+
+```
+
+#### `r ftext('Conclusions from the Kruskal-Wallis Test', ft)`
+
+```{r Kruskal-Wallis Test}
+
+```
+
+#### `r ftext('Post-hoc test: Bonferroni', ft)`
+
+```{r}
+
+```
+
+#### `r ftext('Post-hoc test: Tukey Honestly Significant Difference(HSD)', ft)`
+
+```{r}
+
+```
+
+#### `r ftext('Post-hoc test: Fisher Least Significant Difference(LSD)', ft)`
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

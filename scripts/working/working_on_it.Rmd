@@ -1,0 +1,859 @@
+---
+title: "Pull in Ranks"
+author: "Nathaniel Jones"
+date: "4/19/2021"
+output: word_document
+---
+
+```{r setup, include=F,echo=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+#install.packages("ggpubr") 
+#install.packages("gplots") 
+#install.packages("multcompView") 
+
+library(ggpubr)
+library(gplots)
+library(multcompView)
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+wrapper <- function(x) {
+  round(x,4)
+}
+```
+
+```{r read in dataset and set the mood, echo=F,echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+CollegeSC18 %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                               ifelse(PCTPELL <= .453,0,          # Check Condition One, return 0 if true, 
+                                                      1),                       # ELSE return 1
+                                               NA))
+CollegeSC18$PCTPELL_CAT <- as.factor(CollegeSC18$PCTPELL_CAT)
+
+CSC18 <- CollegeSC18
+
+iters <- 10000
+scalr <- 1
+```
+
+```{r Merge rank data}
+RANK_DATA <- read.csv("RANKING_DATA.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+
+CSC18 <- dplyr::left_join(CSC18,RANK_DATA,by='INSTNM')
+
+#CSC18 %>% filter(is.na(Top_100)==F) %>% select(INSTNM,Top_100) %>% arrange(Top_100)
+#CSC18 %>% filter(is.na(Top_100_affordable)==F) %>% select(INSTNM,Top_100_affordable) %>% arrange(Top_100_affordable)
+CSC18 %<>% mutate("GRAD_CAT" = ifelse(is.na(OMAWDP8_ALL),NA,
+                                            ifelse(OMAWDP8_ALL<.3,0,
+                                                   ifelse(OMAWDP8_ALL>.65,2,1))))
+CSC18$GRAD_CAT <- as.factor(CSC18$GRAD_CAT)
+CSC18 %>% select(GRAD_CAT) %>% summary()
+```
+
+```{r}
+#CSC18 %<>% mutate("Rank_CAT" = ifelse(is.na(Top_100),7,
+#                                      ifelse(Top_100 <= 5,0,                                      #1)))
+#                                             ifelse(Top_100 <= 10,1,                              #2))))
+#                                                    ifelse(Top_100 <= 15,2,                       #3)))))
+#                                                           ifelse(Top_100 <= 25,3,                #4))))))
+#                                                                  ifelse(Top_100 <= 50,4,5)))))))
+#CSC18$Rank_CAT <- as.factor(CSC18$Rank_CAT)
+```
+
+```{r}
+CSC18 %<>% mutate("Rank_CAT" = ifelse(is.na(Top_100),0,ifelse(Top_100 <= 100,1,0)))
+
+CSC18$Rank_CAT <- as.factor(CSC18$Rank_CAT)
+```
+
+```{r}
+CSC18 %>% select(INSTNM,Rank_CAT,Top_100) %>% arrange(Top_100)
+CSC18 %>% select(Rank_CAT) %>% summary()
+```
+
+```{r}
+CSC18 %<>% filter(is.na(PCTPELL)==F) %>% filter(is.na(OMENRUP_ALL)==F)
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+
+#df <- CSC18 %>% filter(var) %>% group_by(cat) %>% summarize(mean,
+#                                                            median,
+#                                                            stderr(),
+#                                                            )
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + geom_histogram(color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ Rank_CAT) + xlab("Percentage of all student receiving an award within 8 years of entry.(OMAWDP8_ALL)") +
+       labs(title= "Figure 1: Histogram of 2-year default rate stratified by the categories of PCTPELL_CAT and Rank_CAT. (n = ***)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+```{r}
+CSC18 %<>% filter(is.na(PCTPELL)==F) %>% filter(is.na(BBRR2_FED_UG_DFR)==F)
+
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DFR,fill=PCTPELL_CAT)) + geom_histogram(color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ ICLEVEL) + xlab("Percentage of students.(OMAWDP8_ALL)") +
+       labs(title= "Figure 1: Histogram of 2-year default rate stratified by the categories of PCTPELL_CAT and Rank_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+```{r}
+CSC18 %<>% filter(is.na(PCTPELL)==F) %>% filter(is.na(OMENRUP_ALL)==F)
+
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + geom_histogram(color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ ICLEVEL) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of students missing in action stratified by the categories of PCTPELL_CAT and Rank_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+
+
+```{r}
+CSC18 %>% filter(!is.na(Top_100))
+CSC18 %>% filter(is.na(Top_100)==F) %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL,Top_100) %>% arrange(desc(Top_100)) %>% filter(PCTPELL_CAT > 0)
+
+CSC18 %>% filter(INSTNM == "Harvard University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CSC18 %>% filter(INSTNM == "Stanford University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CSC18 %>% filter(INSTNM == "University of Chicago") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CSC18 %>% filter(INSTNM == "Kennesaw State University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CSC18 %>% filter(PCTPELL_CAT==1)
+CSC18 %>% select(PCTPELL) %>% summary()
+?desc()
+```
+
+```{r}
+CSC18 %>% filter(is.na(PCTPELL_CAT)==F,is.na(OMENRUP_ALL)==F,) %>% filter(PCTPELL_CAT==0) %>%
+                                           summarize(sample = sum(is.na(CSC18$PCTPELL_CAT)==F))
+
+
+CSC18 %>% filter(is.na(PCTPELL_CAT)==F) %>% filter(is.na(OMENRUP_ALL)==F) %>% filter(PCTPELL_CAT==1) %>%
+                                            summarize(sample = sum(is.na(CSC18$PCTPELL_CAT)==F))
+```
+
+```{r}
+CSC18 %>% select(PCTPELL_CAT)
+```
+
+```{r}
+CSC18_REG <- CollegeSC18 %>% filter(is.na(DEP_DEBT_MDN)==F) %>% filter(is.na(DEBT_MDN)==F) %>% mutate( "PCT_DEP" = IND_DEBT_N/(DEP_DEBT_N+IND_DEBT_N) )
+
+print("Number of undergrad")
+CSC18_REG$D_PCTPELL_PCTFLOAN %>% summary()
+CSC18_REG$DEP_DEBT_N %>% summary()
+
+linear_model <- lm(DEP_DEBT_MDN~PCT_DEP,CSC18_REG)
+summary(linear_model)
+
+CSC18_REG %>% ggplot(aes(PCT_DEP,OMENRUP_ALL)) + geom_point() + 
+                            #scale_x_continuous(breaks=seq(0,20,1)) + scale_y_continuous(breaks=seq(0,20,1)) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x) + theme_bw()
+par(mfrow = c(2, 2))
+plot(linear_model)
+
+CSC18_REG %>% ggplot(aes(DEP_DEBT_MDN)) + geom_histogram(color="black")
+```
+
+```{r}
+CSC18_REG <- CollegeSC18 %>% filter(is.na(IND_DEBT_MDN)==F) %>% filter(is.na(IND_DEBT_MDN)==F)
+
+linear_model <- lm(DEP_DEBT_MDN~IND_DEBT_MDN,CSC18_REG)
+summary(linear_model)
+
+linear_model[1]
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,DEP_DEBT_MDN)) + geom_point() + 
+                            #scale_x_continuous(breaks=seq(0,20,1)) + scale_y_continuous(breaks=seq(0,20,1)) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x) + theme_bw() +
+                            geom_abline(slope=1,intercept=0,col="red",lwd=1)
+
+```
+
+```{r}
+CSC18_REG <- CollegeSC18 %>% filter(is.na(DEP_DEBT_MDN)==F) %>% filter(DEP_DEBT_N<10000) 
+
+
+linear_model <- lm(DEP_DEBT_MDN~DEP_DEBT_N,CSC18_REG)
+summary(linear_model)
+
+x1y1 <- CSC18_REG %>% ggplot(aes(DEP_DEBT_N,DEP_DEBT_MDN)) + geom_point() + 
+                            #scale_x_continuous(breaks=seq(0,20,1)) + scale_y_continuous(breaks=seq(0,20,1)) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x) + theme_bw()
+```
+```{r Merge rank data}
+RANK_DATA <- read.csv("RANKING_DATA.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+
+CollegeSC18 <- dplyr::left_join(CollegeSC18,RANK_DATA,by='INSTNM')
+
+#CollegeSC18 %>% filter(is.na(Top_100)==F) %>% select(INSTNM,Top_100) %>% arrange(Top_100)
+#CollegeSC18 %>% filter(is.na(Top_100_affordable)==F) %>% select(INSTNM,Top_100_affordable) %>% arrange(Top_100_affordable)
+CollegeSC18 %<>% mutate("GRAD_CAT" = ifelse(is.na(OMAWDP8_ALL),NA,
+                                            ifelse(OMAWDP8_ALL<.3,0,
+                                                   ifelse(OMAWDP8_ALL>.65,2,1))))
+CollegeSC18$GRAD_CAT <- as.factor(CollegeSC18$GRAD_CAT)
+CollegeSC18 %>% select(GRAD_CAT) %>% summary()
+```
+
+```{r SLIDE 6: Pell Grant vs Federal Loans, echo=F,message=FALSE}
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F) %>% filter(PCTFLOAN>0)
+CSC18 %>% select(PCTFLOAN) %>% summary()
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(PCTFLOAN))
+ada <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.median=median(PCTFLOAN))
+
+t_tle = "Figure 1: Histogram of the percent of federal loan borrowers stratified by the categories of PCTPELL_CAT. (n = 4423)"
+
+
+CSC18 %>% ggplot(aes(x=PCTFLOAN,fill=PCTPELL_CAT)) + xlab("Percent of federal loan borrowers.") + labs(title= t_tle) +
+                 geom_histogram(color="black",
+                                show.legend = F) +
+                 stat_bin(color="black",
+                          binwidth=.1,
+                          closed="right") + 
+                 scale_fill_manual(name="group",
+                                   values=c("springgreen","cadetblue2"),
+                                   labels=c("0 - Minority Pell population (<=50%)","1 - Majority Pell population (>50%)")) + 
+                 facet_grid(PCTPELL_CAT ~ .) + 
+                 geom_vline(data=mu, 
+                            aes(xintercept=grp.mean, 
+                                color=PCTPELL_CAT),
+                            linetype="dashed",
+                            lwd=1.2,
+                            show.legend = F)# + 
+#                 geom_vline(data=ada, 
+#                            aes(xintercept=grp.median, 
+#                                color=c("pink","sandybrown")),
+#                            linetype="dashed",
+#                            lwd=1.2,
+#                            show.legend = F)
+#CollegeSC18 %>% filter(PCTFLOAN == 0 & MAIN==1) %>% select(INSTNM,PCTPELL,PCTFLOAN,OPEFLAG,NPT4_PUB,NPT4_PRIV,CONTROL,ICLEVEL)
+#CollegeSC18 CSC18%>% filter(PCTFLOAN == 0 & MAIN==1 & OPEFLAG > 1) %>% select(INSTNM,PCTPELL,PCTFLOAN,OPEFLAG,CONTROL,ICLEVEL)
+#CollegeSC18 %>% filter(PCTFLOAN == 0 & MAIN==1 & HCM2 == 1)
+```
+
+```{r SLIDE 7: Pell Grant vs 2-year default rate for Completers,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_DFLT :: Default rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_DFLT)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_DFLT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_DFLT,fill=PCTPELL_CAT)) + 
+       geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),
+                      color="black",
+                      binwidth=.034) +
+       scale_x_continuous(breaks=seq(0,1,.034)) + 
+       scale_fill_manual(name="group",
+                         values=c("springgreen","cadetblue2"),
+                         labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)")) +
+       facet_grid(PCTPELL_CAT ~ .) + 
+       xlab("Percentage of BBRR2_FED_UGCOMP_DFLT.(BBRR2_FED_UGCOMP_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, 
+                  aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",
+                  lwd=1.1,
+                  show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),
+                binwidth=.034, 
+                geom="text",
+                vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_DFLT
+G1 <- One_data$BBRR2_FED_UGCOMP_DFLT
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+# QQ plot
+qqnorm(G0,main="Figure 3.A: Q-Q plot for STAT_UNK: G0",pch=19,cex.main=.83)
+qqline(G0,col = "steelblue")
+abline(v = 0, col="red")
+
+# QQ plot
+qqnorm(G1,main="Figure 3.B: Q-Q plot for STAT_UNK: G1",pch=19,cex.main=.84)
+qqline(G1,col = "steelblue")
+abline(v = 0, col="red")
+
+
+         # RMD test
+Ratio_MD <- RMD.test(G0,G1,direction="two.sided",nsamp=iters,nprt=0)
+
+
+         # Parametric t-test
+ttst <- stats::t.test(G1,G0,
+              alternative= "two.sided",
+              mu=0, paired = F, 
+              var.equal=F,
+              conf.level=.95)
+
+
+         # Wilcoxon Rank-sum
+wilcox_test <- stats::wilcox.test(G1,G0,conf.int=T,
+                                  alternative="two.sided",conf.level=.95)
+
+
+         # Permutation test for the difference in means
+perm_Mean <- permTS(G1,G0,
+                    method = "exact.mc",
+                    alternative = "two.sided",
+                    control=permControl(nmc=iters,seed=59911402))
+
+observed_test_stat_mean <- abs(mean(G1)-mean(G0))
+
+diff_mean <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  diff_mean[i] <- abs(mean(shuffles[1:50])-mean(shuffles[51:100]))
+}
+
+perm_mean_hist <- hist(diff_mean, 
+                       cex.lab=1.5, 
+                       cex.axis=1.5,
+                       cex.main=1.5)
+p_value_mean <- mean(diff_mean >= observed_test_stat_mean)
+plot(perm_mean_hist,col="cadetblue1",xlim=c(0,.3),main="Histogram for the permutation test on the difference in mean")
+abline(v=observed_test_stat_mean,col="blue",lty=1, lwd=5)
+text(observed_test_stat_mean - observed_test_stat_mean*.178, 1525*scalr, paste("Observed Test statistic of ",round(observed_test_stat_mean,4),sep=""))
+rect(observed_test_stat_mean,0,.3,1500*scalr,col=alpha("red",0))
+text(.26, 975*scalr, "Difference in mean")
+text(.26, 913*scalr, "greater than or equal")
+text(.26, 848*scalr, "to the observed difference")
+
+
+         # Permutation test for the difference in medians
+observed_test_stat_median <- abs(median(G1)-median(G0))
+
+difmeds <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  difmeds[i] <- abs(median(shuffles[1:50])-median(shuffles[51:100]))
+}
+
+perm_median_hist <- hist(difmeds,
+                         cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                         cex.axis=1.5,
+                         cex.main=1.5)
+p_value <- mean(difmeds >= observed_test_stat_median)
+plot(perm_median_hist,col="cadetblue1",main="Histogram for the permutation test on the difference in median",xlim=c(0,.25))
+abline(v=observed_test_stat_median,col="blue",lty=1, lwd=5)
+text(observed_test_stat_median + observed_test_stat_median*.415, 2452*scalr, paste("Observed Test statistic of ",observed_test_stat_median,sep=""))
+rect(observed_test_stat_median,0,.25,2400*scalr,col=alpha("red",0))
+text(.25, 1500*scalr, "Difference in medians")
+text(.25, 1433*scalr, "greater than or equal")
+text(.25, 1369*scalr, "to the observed difference")
+
+
+```
+
+```{r}
+ada
+```
+GRAD_CAT
+<fctr>
+grp.median
+<dbl>
+0	0.12557832			
+1	0.10608108			
+2	0.05699482	(>50 <= 75		
+3	0.05279188	(> 75%)
+
+```{r SLIDE 8: Pell Grant vs Drop out rate}
+######################################################################################################################################################################
+##### VARIABLE: OMENRUP_ALL :: Status Unkown rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRUP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRUP_ALL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + 
+  geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+  facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+
+#ggplot(CSC18,aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),color="black",binwidth=.07)
+
+Quant_var <- CSC18$OMENRUP_ALL
+
+G0 <- Zero_data$OMENRUP_ALL
+G1 <- One_data$OMENRUP_ALL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of percent of students without a degree and an unkown status after 8 years stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="OMENRUP_ALL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(((boxplot.stats(G0)$stats)*100),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(((boxplot.stats(G1)$stats)*100),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+# QQ plot
+qqnorm(G0,main="Figure 3.A: Q-Q plot for STAT_UNK: G0",pch=19,cex.main=.83)
+qqline(G0,col = "steelblue")
+abline(v = 0, col="red")
+
+# QQ plot
+qqnorm(G1,main="Figure 3.B: Q-Q plot for STAT_UNK: G1",pch=19,cex.main=.84)
+qqline(G1,col = "steelblue")
+abline(v = 0, col="red")
+
+
+         # RMD test
+Ratio_MD <- RMD.test(G0,G1,direction="two.sided",nsamp=iters,nprt=0)
+
+
+         # Parametric t-test
+ttst <- stats::t.test(G1,G0,
+              alternative= "two.sided",
+              mu=0, paired = F, 
+              var.equal=F,
+              conf.level=.95)
+
+
+         # Wilcoxon Rank-sum
+wilcox_test <- stats::wilcox.test(G1,G0,conf.int=T,
+                                  alternative="two.sided",conf.level=.95)
+
+
+         # Permutation test for the difference in means
+perm_Mean <- permTS(G1,G0,
+                    method = "exact.mc",
+                    alternative = "two.sided",
+                    control=permControl(nmc=iters,seed=59911402))
+
+observed_test_stat_mean <- abs(mean(G1)-mean(G0))
+
+diff_mean <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  diff_mean[i] <- abs(mean(shuffles[1:50])-mean(shuffles[51:100]))
+}
+
+perm_mean_hist <- hist(diff_mean, 
+                       cex.lab=1.5, 
+                       cex.axis=1.5,
+                       cex.main=1.5)
+p_value_mean <- mean(diff_mean >= observed_test_stat_mean)
+plot(perm_mean_hist,col="cadetblue1",xlim=c(0,.3),main="Histogram for the permutation test on the difference in mean")
+abline(v=observed_test_stat_mean,col="blue",lty=1, lwd=5)
+text(observed_test_stat_mean - observed_test_stat_mean*.178, 1525*scalr, paste("Observed Test statistic of ",round(observed_test_stat_mean,4),sep=""))
+rect(observed_test_stat_mean,0,.3,1500*scalr,col=alpha("red",0))
+text(.26, 975*scalr, "Difference in mean")
+text(.26, 913*scalr, "greater than or equal")
+text(.26, 848*scalr, "to the observed difference")
+
+
+         # Permutation test for the difference in medians
+observed_test_stat_median <- abs(median(G1)-median(G0))
+
+difmeds <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  difmeds[i] <- abs(median(shuffles[1:50])-median(shuffles[51:100]))
+}
+
+perm_median_hist <- hist(difmeds,
+                         cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                         cex.axis=1.5,
+                         cex.main=1.5)
+p_value <- mean(difmeds >= observed_test_stat_median)
+plot(perm_median_hist,col="cadetblue1",main="Histogram for the permutation test on the difference in median",xlim=c(0,.35))
+abline(v=observed_test_stat_median,col="blue",lty=1, lwd=5)
+text(observed_test_stat_median - observed_test_stat_median*.178, 2452*scalr, paste("Observed Test statistic of ",observed_test_stat_median,sep=""))
+rect(observed_test_stat_median,0,.35,2400*scalr,col=alpha("red",0))
+text(.29, 1500*scalr, "Difference in medians")
+text(.29, 1433*scalr, "greater than or equal")
+text(.29, 1369*scalr, "to the observed difference")
+
+CollegeSC18 %>% filter(INSTNM == "Harvard University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CollegeSC18 %>% filter(INSTNM == "Stanford University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CollegeSC18 %>% filter(INSTNM == "University of Chicago") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+CollegeSC18 %>% filter(INSTNM == "Kennesaw State University") %>% select(INSTNM,PCTPELL,PCTPELL_CAT,OMENRUP_ALL,GRAD_CAT,OMAWDP8_ALL)
+```
+
+```{r SLIDE 9: Pell Grant vs Drop out rate vs 4- or 2-year}
+######################################################################################################################################################################
+##### VARIABLE: OMENRUP_ALL :: Status Unkown rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRUP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRUP_ALL,ICLEVEL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + 
+  geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+  facet_grid(PCTPELL_CAT ~ ICLEVEL) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+```{r SLIDE 10: Graduation  vs 2-year default rate}
+#Keeper stories:
+#  Uni that have a higher grad rate within 8 years associated with lower default rate
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_DFLT :: Default rate by Graduation rate Categories ######################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(GRAD_CAT)==F) %>% filter(is.na(BBRR2_FED_UG_DFLT)==F) %>% select(PCTPELL,GRAD_CAT,BBRR2_FED_UG_DFLT,ICLEVEL)
+Cat_var <- CSC18$GRAD_CAT
+CSC18 %>% summary()
+
+ada <- plyr::ddply(CSC18, c("GRAD_CAT", "ICLEVEL"), summarise, grp.median=median(BBRR2_FED_UG_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$GRAD_CAT=="0") # <  30%
+One_data  <- subset(CSC18, subset = CSC18$GRAD_CAT=="1") # >= 30%
+Two_data  <- subset(CSC18, subset = CSC18$GRAD_CAT=="2") # >  65%
+
+Quant_var <- CSC18$BBRR2_FED_UG_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UG_DFLT
+G1 <- One_data$BBRR2_FED_UG_DFLT
+G2 <- Two_data$BBRR2_FED_UG_DFLT
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DFLT,fill=GRAD_CAT)) + geom_histogram(aes(y=stat(count),fill=GRAD_CAT),color="black",binwidth=.034) +
+  scale_x_continuous(breaks=seq(0,1,.034)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=sample(personal_Palette,4),labels=c("< 25%",">= 25% <= 50%","> 50% <= 75%","75%"))+
+       facet_grid(GRAD_CAT ~ ICLEVEL) + xlab("Percentage of BBRR2_FED_UG_DFLT.(BBRR2_FED_UG_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_DFLT stratified by the categories of GRAD_CAT. (n = 5065)") +
+       geom_vline(data=ada, aes(xintercept=grp.median, color=GRAD_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=paste(..count..,sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+boxplot(Quant_var~Cat_var,
+        names=c("< 30%",">= 30% <= 65%","> 65%","dd"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_DFLT stratified by the categories of GRAD_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="GRAD_CAT", 
+        ylab="BBRR2_FED_UG_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the middle boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G2)$stats, 
+     labels = paste(round(boxplot.stats(G2)$stats*100,2),"%",sep=" "), 
+     x = 3.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G2),3), # leftside 60%
+     labels = paste((round(mean(G2),3)*100),"%",sep=" "), 
+     x = 2.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G2),3), 
+     labels = paste((round(max(G2),3)*100),"%",sep=" "), 
+     x =  3.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G2),3), 
+#     labels = paste((round(min(G2),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+# QQ plot
+qqnorm(G0,main="Figure 3.A: Q-Q plot for Default rate: G0",pch=19,cex.main=.83)
+qqline(G0,col = "steelblue")
+abline(v = 0, col="red")
+
+# QQ plot
+qqnorm(G1,main="Figure 3.B: Q-Q plot for STAT_UNK: G1",pch=19,cex.main=.84)
+qqline(G1,col = "steelblue")
+abline(v = 0, col="red")
+
+# QQ plot
+qqnorm(G2,main="Figure 3.B: Q-Q plot for STAT_UNK: G2",pch=19,cex.main=.84)
+qqline(G1,col = "steelblue")
+abline(v = 0, col="red")
+
+
+```
+
+```{r Pell Grant vs Drop out rate vs Top 100}
+######################################################################################################################################################################
+##### VARIABLE: OMENRUP_ALL :: Status Unkown rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRUP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRUP_ALL,Rank_CAT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + 
+  geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+  facet_grid(PCTPELL_CAT ~ Rank_CAT) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+```{r}
+######################################################################################################################################################################
+##### VARIABLE: OMENRUP_ALL :: Status Unkown rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRUP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRUP_ALL,Rank_CAT,ICLEVEL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + 
+  geom_histogram(aes(y=stat(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + #scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+  facet_grid(PCTPELL_CAT ~ Rank_CAT+ICLEVEL) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count..,label=..count..),binwidth=.07, geom="text",vjust=-.5)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

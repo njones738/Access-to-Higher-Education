@@ -1,0 +1,589 @@
+---
+title: "Deliverable Two"
+author: "Nathaniel Jones"
+date: "4/2/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+```
+
+```{r read in dataset and set the mood, echo=FALSE}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+```
+
+```{r Creation of the Binary variables}
+CSC18 <- CollegeSC18 %>% filter(MAIN == 1) %>% select(INSTNM,PCTPELL,FTFTPCTPELL,PREDDEG,HIGHDEG,CONTROL,LOCALE,ICLEVEL,OPENADMP,OPEFLAG,HCM2)
+CSC18 %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(PCTPELL <= .5,0,          # Check Condition One, return 0 if true, 
+                                                1),                       # ELSE return 1
+                                         NA),                             # ** Return NA
+                  "FTFTPCTPELL_CAT" = ifelse(is.na(FTFTPCTPELL)!=T,       # Check if missing. IF not True, THEN continue, ELSE go to **
+                                             ifelse(FTFTPCTPELL <= .5,0,  # Check Condition One, return 0 IF true,
+                                                    1),                   # ELSE return 1
+                                             NA),                         # ** Return NA
+                  "PREDDEG_CAT" = ifelse(is.na(PREDDEG)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(PREDDEG == 0,NA,          # Check Condition One, return NA if true,
+                                                ifelse(PREDDEG == 3,1,    # Check Condition Two, return 1 if true
+                                                       0)),               # ELSE return 0
+                                         NA),                             # ** Return NA
+                  "HIGHDEG_CAT" = ifelse(is.na(HIGHDEG)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(HIGHDEG == 0,NA,          # Check Condition One, return NA if true,
+                                                ifelse(HIGHDEG == 3,1,    # Check Condition Two, return 1 if true,
+                                                       0)),               # ELSE return 0
+                                         NA),                             # ** Return NA
+                  "CONTROL_CAT" = ifelse(is.na(CONTROL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(CONTROL == 1,0,           # Check Condition One, return 0 if true,
+                                                1),                       # Else return 1
+                                         NA),                             # ** Return NA
+                  "ICLEVEL_CAT" = ifelse(is.na(ICLEVEL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(ICLEVEL == 1,0,           # Check Condition One, return 0 if true,
+                                                1),                       # ELSE return 1
+                                         NA),                             # ** Return NA
+                  "LOCALE_CAT" = ifelse(is.na(LOCALE) != T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                        ifelse(LOCALE >= 33,1,            # Check Condition One, return 1 if true,
+                                               0),                        # ELSE return 0
+                                        NA),                              # ** Return NA
+                  "OPEFLAG_CAT" = ifelse(is.na(OPEFLAG)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(OPEFLAG == 1,0,           # Check Condition One, return 0 if true,
+                                                ifelse(OPEFLAG == 2,0,    # Check Condition Two, return 0 if true,
+                                                       1)),               # ELSE return 1
+                                         NA))                             # ** Return NA
+CSC18
+
+#CSC18 %>% select(PCTPELL,PCTPELL_CAT,FTFTPCTPELL,FTFTPCTPELL_CAT) %>% summary()                              # No filter summary
+#CSC18 %>% select(PCTPELL,PCTPELL_CAT,FTFTPCTPELL,FTFTPCTPELL_CAT) %>% filter(PCTPELL_CAT == 1) %>% summary() # Greater than or equal to 50% Pell Recipient
+#CSC18 %>% select(PCTPELL,PCTPELL_CAT,FTFTPCTPELL,FTFTPCTPELL_CAT) %>% filter(PCTPELL_CAT != 1) %>% summary() # Less than 50% Pell Recipient
+#CSC18 %>% select(PCTPELL,PCTPELL_CAT,FTFTPCTPELL,FTFTPCTPELL_CAT) %>% filter(FTFTPCTPELL_CAT == 1) %>% summary() # Greater than or equal to 50% Pell Recipient
+#CSC18 %>% select(PCTPELL,PCTPELL_CAT,FTFTPCTPELL,FTFTPCTPELL_CAT) %>% filter(FTFTPCTPELL_CAT != 1) %>% summary() # Less than 50% Pell Recipient
+#CSC18 %>% select(PREDDEG,PREDDEG_CAT,HIGHDEG,HIGHDEG_CAT) %>% filter(PREDDEG == 3) %>% summary() # summary of predominantly bachelor degree granting
+#CSC18 %>% select(PREDDEG,PREDDEG_CAT,HIGHDEG,HIGHDEG_CAT) %>% filter(HIGHDEG == 3) %>% summary() # summary of highest degree awarded == bachelor
+#CSC18 %>% select(CONTROL,CONTROL_CAT) %>% filter(CONTROL == 1) %>% summary() # IF CONTROL == 1, THEN CONTROL_CAT == 0.(PUBLIC(0) UNI- else PRIVATE(1) UNI-)
+#CSC18 %>% select(ICLEVEL,ICLEVEL_CAT) %>% filter(ICLEVEL == 1) %>% summary() # IF ICLEVEL == 1, THEN ICLEVEL_CAT == 0.(4-YR(0) UNI- else <4-YR(1) UNI-)
+#CSC18 %>% select(LOCALE,LOCALE_CAT) %>% filter(LOCALE > 32) %>% summary()    # IF LOCALE > 33, THEN LOCALE_CAT == 1.  (URBAN LOCALE(0) UNI- else RURAL LOCALE(1) UNI-)
+#CSC18 %>% select(OPEFLAG,OPEFLAG_CAT) %>% filter(OPEFLAG > 2) %>% summary() # IF OPEFLAG > 2, THEN OPEFLAG_CAT == 1. (NO Title IV PARTICIPATION RESTRICTION(0) else T4 RESTRICTION(1))
+
+# Change type to factor since they are binary and not numeric
+
+
+CSC18$HCM2 <- as.factor(CSC18$HCM2)
+CSC18$PCTPELL_CAT <- as.factor(CSC18$PCTPELL_CAT)
+CSC18$FTFTPCTPELL_CAT <- as.factor(CSC18$FTFTPCTPELL_CAT)
+CSC18$PREDDEG_CAT <- as.factor(CSC18$PREDDEG_CAT)
+CSC18$HIGHDEG_CAT <- as.factor(CSC18$HIGHDEG_CAT)
+CSC18$CONTROL_CAT <- as.factor(CSC18$CONTROL_CAT)
+CSC18$ICLEVEL_CAT <- as.factor(CSC18$ICLEVEL_CAT)
+CSC18$LOCALE_CAT <- as.factor(CSC18$LOCALE_CAT)
+CSC18$OPEFLAG_CAT <- as.factor(CSC18$OPEFLAG_CAT)
+CSC18$OPENADMP <- as.factor(CSC18$OPENADMP)
+
+CSC18 %<>% select(-PREDDEG,-HIGHDEG,-CONTROL,-LOCALE,-ICLEVEL,-OPEFLAG)
+```
+
+```{r Handle Missing values}
+CSC18 # 5345 obs
+working_CSC18 <- CSC18 %>% filter(is.na(PCTPELL)!=T)
+#working_CSC18 %>% summary()
+working_CSC18 # 5065 obs
+
+working_CSC181 <- working_CSC18 %>% filter(is.na(FTFTPCTPELL)!=T)
+working_CSC181 %>% summary()
+working_CSC181 # 4864 obs
+
+working_CSC182 <- working_CSC18 %>% filter(is.na(OPENADMP)!=T)
+#working_CSC182 %>% summary()
+working_CSC182 # 4954 obs
+
+working_CSC183 <- working_CSC18 %>% filter(is.na(HIGHDEG_CAT)!=T)
+#working_CSC183 %>% summary()
+working_CSC183 # 5057 obs
+```
+
+```{r FTFTPCTPELL_CAT}
+mu <- plyr::ddply(working_CSC181, "FTFTPCTPELL_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h1 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(FTFTPCTPELL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by FTFTPCTPELL_CAT")
+```
+
+```{r OPENADMP}
+mu <- plyr::ddply(working_CSC182, "OPENADMP", summarise, grp.mean=mean(PCTPELL))
+
+h2 <- ggplot(working_CSC182, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(OPENADMP ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by OPENADMP")
+```
+
+```{r HCM2}
+mu <- plyr::ddply(working_CSC181, "HCM2", summarise, grp.mean=mean(PCTPELL))
+
+h3 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(HCM2 ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by HCM2")
+```
+
+```{r PREDDEG_CAT}
+mu <- plyr::ddply(working_CSC181, "PREDDEG_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h4 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(PREDDEG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by PREDDEG_CAT")
+```
+
+```{r HIGHDEG_CAT}
+mu <- plyr::ddply(working_CSC183, "HIGHDEG_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h5 <- ggplot(working_CSC183, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(HIGHDEG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by HIGHDEG_CAT")
+```
+
+```{r CONTROL_CAT}
+mu <- plyr::ddply(working_CSC181, "CONTROL_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h6 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(CONTROL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by CONTROL_CAT")
+```
+
+```{r ICLEVEL_CAT}
+mu <- plyr::ddply(working_CSC181, "ICLEVEL_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h7 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(ICLEVEL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by ICLEVEL_CAT")
+```
+
+```{r LOCALE_CAT}
+mu <- plyr::ddply(working_CSC181, "LOCALE_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h8 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(LOCALE_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by LOCALE_CAT")
+```
+
+```{r OPEFLAG_CAT}
+mu <- plyr::ddply(working_CSC181, "OPEFLAG_CAT", summarise, grp.mean=mean(PCTPELL))
+
+h9 <- ggplot(working_CSC181, aes(x=PCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(OPEFLAG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of undergraduate students who received a pell grant stratified by OPEFLAG_CAT")
+working_CSC181 %>% filter(OPEFLAG_CAT == 1 & PCTPELL_CAT == 0)
+working_CSC181 %>% filter(OPEFLAG_CAT == 1 & PCTPELL_CAT == 1)
+CollegeSC18 %>% filter(INSTNM == "Fashion Focus Hair Academy") %>% select(INSTNM,CONTROL,PREDDEG,HIGHDEG)
+```
+
+```{r PCTPELL as the QUANTITATIVE VARIABLE}
+h1
+h2
+h3
+h4
+h5
+h6
+h7
+h8
+h9
+```
+```{r Handle Missing values2}
+CSC18 # 5345 obs
+working_CSC18 <- CSC18 %>% filter(is.na(FTFTPCTPELL)!=T)
+#working_CSC18 %>% summary()
+working_CSC18 # 5065 obs
+
+working_CSC181 <- working_CSC18 %>% filter(is.na(PCTPELL)!=T)
+working_CSC181 %>% summary()
+working_CSC181 # 4864 obs
+
+working_CSC182 <- working_CSC18 %>% filter(is.na(OPENADMP)!=T)
+#working_CSC182 %>% summary()
+working_CSC182 # 4954 obs
+
+working_CSC183 <- working_CSC18 %>% filter(is.na(HIGHDEG_CAT)!=T)
+#working_CSC183 %>% summary()
+working_CSC183 # 5057 obs
+```
+
+```{r PCTPELL_CAT}
+mu <- plyr::ddply(working_CSC181, "PCTPELL_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h1 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(PCTPELL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by PCTPELL_CAT")
+```
+
+```{r OPENADMP}
+mu <- plyr::ddply(working_CSC182, "OPENADMP", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h2 <- ggplot(working_CSC182, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(OPENADMP ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by OPENADMP")
+```
+
+```{r HCM2}
+mu <- plyr::ddply(working_CSC181, "HCM2", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h3 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(HCM2 ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by HCM2")
+```
+
+```{r PREDDEG_CAT}
+mu <- plyr::ddply(working_CSC181, "PREDDEG_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h4 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(PREDDEG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by PREDDEG_CAT")
+```
+
+```{r HIGHDEG_CAT}
+mu <- plyr::ddply(working_CSC183, "HIGHDEG_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h5 <- ggplot(working_CSC183, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(HIGHDEG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by HIGHDEG_CAT")
+```
+
+```{r CONTROL_CAT}
+mu <- plyr::ddply(working_CSC181, "CONTROL_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h6 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(CONTROL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by CONTROL_CAT")
+```
+
+```{r ICLEVEL_CAT}
+mu <- plyr::ddply(working_CSC181, "ICLEVEL_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h7 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(ICLEVEL_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by ICLEVEL_CAT")
+```
+
+```{r LOCALE_CAT}
+mu <- plyr::ddply(working_CSC181, "LOCALE_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h8 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(LOCALE_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by LOCALE_CAT")
+```
+
+```{r OPEFLAG_CAT}
+mu <- plyr::ddply(working_CSC181, "OPEFLAG_CAT", summarise, grp.mean=mean(FTFTPCTPELL))
+
+h9 <- ggplot(working_CSC181, aes(x=FTFTPCTPELL)) +
+       geom_histogram(color="black", fill=sample(personal_Palette,1)) +
+       facet_grid(OPEFLAG_CAT ~ .) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color="red"),
+                  linetype="dashed") +
+       labs(title= "Histogram of the percent of First-time Full-time undergraduate students who received a pell grant stratified by OPEFLAG_CAT")
+```
+
+```{r FTFTPCTPELL as the QUANTITATIVE VARIABLE}
+h1
+h2
+h3
+h4
+h5
+h6
+h7
+h8
+h9
+```
+
+```{r}
+Zero_data <- subset(CSC18, subset = CSC18$PREDDEG_CAT=="0")
+One_data  <- subset(CSC18, subset = CSC18$PREDDEG_CAT=="1")
+
+ggplot() + 
+  stat_qq(aes(sample = Zero_data$PCTPELL), colour = "green") + 
+  stat_qq(aes(sample = One_data$PCTPELL), colour = "red") +
+  geom_abline(aes(slope = Zero_data$PCTPELL, intercept = .95), linetype = 2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### `r ftext('Background Information and Variable description', ft)`
+
+|       asdf
+
+
+
+
+
+#### `r ftext('Hypothesis and Results', ft)`
+
+```{r}
+
+```
+
+
+
+#### `r ftext('Subset, Histogram, and Boxplot', ft)`
+
+```{r Subsets}
+
+```
+
+
+```{r Histogram}
+plant_labels<-factor(widge$Plant,levels=c("D","N"), labels=c("Dallas","Norcross"))
+#plant_labels
+colorsBW_single <- c("gray90")  # once the colorsBW variable is defined you do not have to keep running it.
+colorsBW_many <- c("gray90", "gray70", "gray50", "gray80", "gray60")
+histogram(~widge$PRDCTY|plant_labels,
+          main="Figure 8: Histogram of Productivity by Plant (n=40)",
+          xlab="Productivity Scores (0 to 100 points)",
+          type="percent",
+          breaks=seq(from=60, to=100, by=5),
+          layout=c(1,2),   # 1 column and 2 rows
+          col=colorsBW_single
+          ) 
+```
+
+```{r Boxplot}
+ggplot(df, aes(varx,vary)) +
+       stat_boxplot(geom ='errorbar') +
+       geom_boxplot(aes(fill = sample(personal_Palette,2)),width=.6,
+                    position = position_dodge(preserve = "single")) +
+       ggtitle("Frequency of Weathersit by Season") + 
+       xlab("Season") + ylab("Frequency") +
+       scale_fill_manual(values = colors) +
+       labs(fill = "Weathersit")
+```
+
+
+#### `r ftext('Check for normality', ft)`
+
+```{r}
+# QQ plot
+qqnorm(vari,main="Figure 3: Q-Q plot for the Average Net Price (n = 2284)",pch=19)
+qqline(vari,col = "steelblue")
+abline(v = 0, col="red")
+abline(h = c(order_vari[1095], order_vari[1190],18500),
+       col = c("sandybrown","sandybrown","red"),
+       lty = c(1,1,2),
+       lwd = c(1,1,3))
+
+shap_wilk <- shapiro.test(vari)
+#shap_wilk
+#shap_wilk$p.value
+```
+
+
+
+#### `r ftext('Conclusions from the Parametric t-test on the difference of two population centers', ft)`
+
+```{r}
+
+stats::t.test(var1,var2,
+              alternative= "two.sided",
+              mu=0, paired = F, 
+              var.equal=F,
+              conf.level=.95)
+
+
+```
+
+
+
+#### `r ftext('Conclusions from the Permutation test on the difference of two population means', ft)`
+
+```{r}
+perm::permTS(var1,var2,                          # no sig diff in centers
+             method="exact.mc",                  # 
+             control=permControl(nmc=100,        # 
+                                 seed=59914120)) # ALWAYS set seed
+
+```
+
+
+
+#### `r ftext('Conclusions from the Permutation test on the difference of two population medians', ft)`
+
+```{r}
+jmuOutlier::perm.test(var1,var2, 
+          stat=median,
+          alternative="two.sided",
+          mu=0,
+          paired=FALSE,
+          plot=FALSE,
+          all.perms=TRUE, # does exact unless computing the exac p-value takes more than num.sim calculations
+          num.sim=20000) # default number of permutations, runs instantaneously, 100000 takes about 30 secs.
+
+```
+
+
+
+#### `r ftext('Conclusion from Permutation test on the difference of two population trimmed means', ft)`
+
+```{r}
+jmuOutlier::perm.test(var1,var2,
+                      stat=mean, trim=0.10,     # trim by 10%
+                      alternative="two.sided",
+                      all.perms=TRUE, mu=0, 
+                      paired=FALSE, plot=FALSE,
+                      num.sim=10000)
+
+
+```
+
+
+
+#### `r ftext('Conclusion from the Wilcoxon Rank Sum test on the difference of two population centers', ft)`
+
+```{r}
+stats::wilcox.test(var1,var2,)
+
+```
+
+
+#### `r ftext('Conclusion from the RMD (Ratio Mean Difference) test', ft)`
+
+```{r}
+RMD.test(var1,var2,
+         nsamp=100) 
+```
+
+
+
+
+#### `r ftext('Conclusion from the Kolmogorov-Smirnov test on the difference of shape, center, and spread.', ft)`
+
+```{r}
+stats::ks.test(var1,var2,)
+```
+
+
+

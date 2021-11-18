@@ -1,0 +1,3068 @@
+---
+title: "On the road again!"
+author: "Nathaniel Jones"
+date: "4/15/2021"
+output: word_document
+---
+
+```{r setup, include=F,echo=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+#install.packages("ggpubr") 
+#install.packages("gplots") 
+#install.packages("multcompView") 
+
+library(ggpubr)
+library(gplots)
+library(multcompView)
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+wrapper <- function(x) {
+  round(x,4)
+}
+```
+
+```{r read in dataset and set the mood, echo=F,echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+CollegeSC18 %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                               ifelse(PCTPELL <= .5,0,          # Check Condition One, return 0 if true, 
+                                                      1),                       # ELSE return 1
+                                               NA))
+CollegeSC18$PCTPELL_CAT <- as.factor(CollegeSC18$PCTPELL_CAT)
+```
+
+```{r visuals for Grad, Tran, Enrl, and Unk rates,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: OMAWDP8_ALL :: Graduation rate #######################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMAWDP8_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMAWDP8_ALL,INSTNM)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMAWDP8_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMAWDP8_ALL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of all student receiving an award within 8 years of entry.(OMAWDP8_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all student receiving an award within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$OMAWDP8_ALL    
+
+G0 <- Zero_data$OMAWDP8_ALL
+G1 <- One_data$OMAWDP8_ALL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of the percent of students who graduated with an award within 8 years stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="OMAWDP8_ALL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(((boxplot.stats(G0)$stats)*100),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(((boxplot.stats(G1)$stats)*100),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: OMENRYP_ALL :: Still enrolled rate ###################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRYP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRYP_ALL,INSTNM)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRYP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRYP_ALL,fill=PCTPELL_CAT)) + 
+  geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.035) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of all students that did not receive an award and are still enrolled at this institution 8 years after entry. (OMENRYP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and are still enrolled at this institution 8 years after entry stratified by the categories of PCTPELL_CAT. (n = 5065)") + scale_x_continuous(breaks=seq(0,1,.035)) + scale_y_continuous(labels=scales::percent) +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.035, geom="text",vjust=-.5)+
+       theme(axis.text.x = element_text(angle = 45))
+
+Quant_var <- CSC18$OMENRYP_ALL
+
+G0 <- Zero_data$OMENRYP_ALL
+G1 <- One_data$OMENRYP_ALL
+
+#CSC18 %>% filter(OMENRYP_ALL >= .5)
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of percent of students still enrolled without a degree within 8 years stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="OMENRYP_ALL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+#text(y = boxplot.stats(G0)$stats, 
+#     labels = paste(((boxplot.stats(G0)$stats)*100),"%",sep=" "), 
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%","Blackhawk Technical College",sep=" "), 
+     x =  1.44, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+#text(y = boxplot.stats(G1)$stats, 
+#     labels = paste(((boxplot.stats(G1)$stats)*100),"%",sep=" "), 
+#     x = 2.33, 
+#     col = "black",
+#     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste("Instituto Tecnologico de Puerto Rico-Recinto de San Juan",(round(max(G1),3)*100),"%",sep=" "), 
+     x =  1.26, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: OMENRAP_ALL :: Transfer rate #########################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRAP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRAP_ALL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRAP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRAP_ALL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of all students that did not receive an award and enrolled at another institution after leaving this institution within 8 years of entry.(OMENRAP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and enrolled at another institution after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$OMENRAP_ALL
+
+G0 <- Zero_data$OMENRAP_ALL
+G1 <- One_data$OMENRAP_ALL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of the percent of students who transferred within 8 years stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="OMENRAP_ALL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(((boxplot.stats(G0)$stats)*100),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(((boxplot.stats(G1)$stats)*100),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: OMENRUP_ALL :: Status Unkown rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(OMENRUP_ALL)==F) %>% select(PCTPELL,PCTPELL_CAT,OMENRUP_ALL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(OMENRUP_ALL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=OMENRUP_ALL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry.(OMENRUP_ALL)") +
+       labs(title= "Figure 1: Histogram of the Percentage of all students that did not receive an award and whose enrollment status is unknown after leaving this institution within 8 years of entry stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$OMENRUP_ALL
+
+G0 <- Zero_data$OMENRUP_ALL
+G1 <- One_data$OMENRUP_ALL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of percent of students without a degree and an unkown status after 8 years stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="OMENRUP_ALL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(((boxplot.stats(G0)$stats)*100),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(((boxplot.stats(G1)$stats)*100),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+######################################################################################################################################################################
+```
+
+## All students
+### Visuals for default, deliquency,all loans discharged, or notmaking progress, forbearance and deferment, and making progress and paid in full
+```{r ALL,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_DFLT :: Default rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_DFLT)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_DFLT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DFLT,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  scale_x_continuous(breaks=seq(0,1,.034)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_DFLT.(BBRR2_FED_UG_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(count),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UG_DFLT
+G1 <- One_data$BBRR2_FED_UG_DFLT
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_DLNQ :: Delinquency rate ################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_DLNQ)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_DLNQ)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_DLNQ))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DLNQ,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_DLNQ.(BBRR2_FED_UG_DLNQ)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_DLNQ
+
+G0 <- Zero_data$BBRR2_FED_UG_DLNQ
+G1 <- One_data$BBRR2_FED_UG_DLNQ
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_DLNQ",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_FBR :: Forbearance rate #################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_FBR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_FBR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_FBR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_FBR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_FBR.(BBRR2_FED_UG_FBR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_FBR
+
+G0 <- Zero_data$BBRR2_FED_UG_FBR
+G1 <- One_data$BBRR2_FED_UG_FBR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_FBR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_DFR :: Deferment rate ###################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_DFR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_DFR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_DFR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DFR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_DFR.(BBRR2_FED_UG_DFR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_DFR
+
+G0 <- Zero_data$BBRR2_FED_UG_DFR
+G1 <- One_data$BBRR2_FED_UG_DFR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_DFR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_NOPROG :: Not making progress rate ######################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_NOPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_NOPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_NOPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_NOPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_NOPROG.(BBRR2_FED_UG_NOPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_NOPROG
+
+G0 <- Zero_data$BBRR2_FED_UG_NOPROG
+G1 <- One_data$BBRR2_FED_UG_NOPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_NOPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_MAKEPROG :: Making progress rate ########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_MAKEPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_MAKEPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_MAKEPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_MAKEPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_MAKEPROG.(BBRR2_FED_UG_MAKEPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_MAKEPROG
+
+G0 <- Zero_data$BBRR2_FED_UG_MAKEPROG
+G1 <- One_data$BBRR2_FED_UG_MAKEPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_MAKEPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_PAIDINFULL :: Paid in full rate #########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_PAIDINFULL)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_PAIDINFULL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_PAIDINFULL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_PAIDINFULL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.05) +
+  scale_x_continuous(breaks=seq(0,1,.05)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_PAIDINFULL.(BBRR2_FED_UG_PAIDINFULL)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.05, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_PAIDINFULL
+
+G0 <- Zero_data$BBRR2_FED_UG_PAIDINFULL
+G1 <- One_data$BBRR2_FED_UG_PAIDINFULL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_PAIDINFULL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UG_DISCHARGE :: All loans discharged rate ##################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UG_DISCHARGE)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UG_DISCHARGE)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UG_DISCHARGE))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UG_DISCHARGE,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UG_DISCHARGE.(BBRR2_FED_UG_DISCHARGE)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UG_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UG_DISCHARGE
+
+G0 <- Zero_data$BBRR2_FED_UG_DISCHARGE
+G1 <- One_data$BBRR2_FED_UG_DISCHARGE
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UG_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UG_DISCHARGE",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+```
+
+## Students that completed
+### Visuals for default, deliquency,all loans discharged, or notmaking progress, forbearance and deferment, and making progress and paid in full
+```{r COMPLETERS,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_DFLT :: Default rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_DFLT)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_DFLT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_DFLT,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  scale_x_continuous(breaks=seq(0,1,.034)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_DFLT.(BBRR2_FED_UGCOMP_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(count),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_DFLT
+G1 <- One_data$BBRR2_FED_UGCOMP_DFLT
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_DLNQ :: Delinquency rate ################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_DLNQ)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_DLNQ)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_DLNQ))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_DLNQ,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_DLNQ.(BBRR2_FED_UGCOMP_DLNQ)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_DLNQ
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_DLNQ
+G1 <- One_data$BBRR2_FED_UGCOMP_DLNQ
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_DLNQ",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_FBR :: Forbearance rate #################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_FBR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_FBR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_FBR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_FBR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_FBR.(BBRR2_FED_UGCOMP_FBR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_FBR
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_FBR
+G1 <- One_data$BBRR2_FED_UGCOMP_FBR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_FBR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_DFR :: Deferment rate ###################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_DFR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_DFR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_DFR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_DFR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_DFR.(BBRR2_FED_UGCOMP_DFR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_DFR
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_DFR
+G1 <- One_data$BBRR2_FED_UGCOMP_DFR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_DFR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_NOPROG :: Not making progress rate ######################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_NOPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_NOPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_NOPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_NOPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_NOPROG.(BBRR2_FED_UGCOMP_NOPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_NOPROG
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_NOPROG
+G1 <- One_data$BBRR2_FED_UGCOMP_NOPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_NOPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_MAKEPROG :: Making progress rate ########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_MAKEPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_MAKEPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_MAKEPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_MAKEPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_MAKEPROG.(BBRR2_FED_UGCOMP_MAKEPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_MAKEPROG
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_MAKEPROG
+G1 <- One_data$BBRR2_FED_UGCOMP_MAKEPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_MAKEPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_PAIDINFULL :: Paid in full rate #########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_PAIDINFULL)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_PAIDINFULL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_PAIDINFULL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_PAIDINFULL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.05) +
+  scale_x_continuous(breaks=seq(0,1,.05)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_PAIDINFULL.(BBRR2_FED_UGCOMP_PAIDINFULL)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.05, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_PAIDINFULL
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_PAIDINFULL
+G1 <- One_data$BBRR2_FED_UGCOMP_PAIDINFULL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_PAIDINFULL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGCOMP_DISCHARGE :: All loans discharged rate ##################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGCOMP_DISCHARGE)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGCOMP_DISCHARGE)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGCOMP_DISCHARGE))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGCOMP_DISCHARGE,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGCOMP_DISCHARGE.(BBRR2_FED_UGCOMP_DISCHARGE)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGCOMP_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGCOMP_DISCHARGE
+
+G0 <- Zero_data$BBRR2_FED_UGCOMP_DISCHARGE
+G1 <- One_data$BBRR2_FED_UGCOMP_DISCHARGE
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGCOMP_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGCOMP_DISCHARGE",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+```
+
+## Students that did not completed
+### Visuals for default, deliquency,all loans discharged, or notmaking progress, forbearance and deferment, and making progress and paid in full
+```{r NONCOMPLETERS,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_DFLT :: Default rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_DFLT)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_DFLT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_DFLT,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  scale_x_continuous(breaks=seq(0,1,.034)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_DFLT.(BBRR2_FED_UGNOCOMP_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(count),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_DFLT
+G1 <- One_data$BBRR2_FED_UGNOCOMP_DFLT
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_DLNQ :: Delinquency rate ################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_DLNQ)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_DLNQ)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_DLNQ))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_DLNQ,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_DLNQ.(BBRR2_FED_UGNOCOMP_DLNQ)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_DLNQ
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_DLNQ
+G1 <- One_data$BBRR2_FED_UGNOCOMP_DLNQ
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_DLNQ",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_FBR :: Forbearance rate #################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_FBR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_FBR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_FBR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_FBR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_FBR.(BBRR2_FED_UGNOCOMP_FBR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_FBR
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_FBR
+G1 <- One_data$BBRR2_FED_UGNOCOMP_FBR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_FBR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_DFR :: Deferment rate ###################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_DFR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_DFR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_DFR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_DFR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_DFR.(BBRR2_FED_UGNOCOMP_DFR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_DFR
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_DFR
+G1 <- One_data$BBRR2_FED_UGNOCOMP_DFR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_DFR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_NOPROG :: Not making progress rate ######################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_NOPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_NOPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_NOPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_NOPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_NOPROG.(BBRR2_FED_UGNOCOMP_NOPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_NOPROG
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_NOPROG
+G1 <- One_data$BBRR2_FED_UGNOCOMP_NOPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_NOPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_MAKEPROG :: Making progress rate ########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_MAKEPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_MAKEPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_MAKEPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_MAKEPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_MAKEPROG.(BBRR2_FED_UGNOCOMP_MAKEPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_MAKEPROG
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_MAKEPROG
+G1 <- One_data$BBRR2_FED_UGNOCOMP_MAKEPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_MAKEPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_PAIDINFULL :: Paid in full rate #########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_PAIDINFULL)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_PAIDINFULL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_PAIDINFULL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_PAIDINFULL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.05) +
+  scale_x_continuous(breaks=seq(0,1,.05)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_PAIDINFULL.(BBRR2_FED_UGNOCOMP_PAIDINFULL)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.05, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_PAIDINFULL
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_PAIDINFULL
+G1 <- One_data$BBRR2_FED_UGNOCOMP_PAIDINFULL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_PAIDINFULL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGNOCOMP_DISCHARGE :: All loans discharged rate ##################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGNOCOMP_DISCHARGE)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGNOCOMP_DISCHARGE)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGNOCOMP_DISCHARGE))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGNOCOMP_DISCHARGE,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGNOCOMP_DISCHARGE.(BBRR2_FED_UGNOCOMP_DISCHARGE)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGNOCOMP_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGNOCOMP_DISCHARGE
+
+G0 <- Zero_data$BBRR2_FED_UGNOCOMP_DISCHARGE
+G1 <- One_data$BBRR2_FED_UGNOCOMP_DISCHARGE
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGNOCOMP_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGNOCOMP_DISCHARGE",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+```
+
+## Students thats status is unkown
+### Visuals for default, deliquency,all loans discharged, or notmaking progress, forbearance and deferment, and making progress and paid in full
+```{r STATUS UNKOWN,echo=F}
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_DFLT :: Default rate ####################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_DFLT)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_DFLT)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_DFLT))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_DFLT,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  scale_x_continuous(breaks=seq(0,1,.034)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_DFLT.(BBRR2_FED_UGUNK_DFLT)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(count),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_DFLT
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_DFLT
+G1 <- One_data$BBRR2_FED_UGUNK_DFLT
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_DFLT stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_DFLT",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_DLNQ :: Delinquency rate ################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_DLNQ)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_DLNQ)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_DLNQ))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_DLNQ,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_DLNQ.(BBRR2_FED_UGUNK_DLNQ)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_DLNQ
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_DLNQ
+G1 <- One_data$BBRR2_FED_UGUNK_DLNQ
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_DLNQ stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_DLNQ",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_FBR :: Forbearance rate #################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_FBR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_FBR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_FBR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_FBR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_FBR.(BBRR2_FED_UGUNK_FBR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_FBR
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_FBR
+G1 <- One_data$BBRR2_FED_UGUNK_FBR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_FBR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_FBR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_DFR :: Deferment rate ###################################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_DFR)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_DFR)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_DFR))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_DFR,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_DFR.(BBRR2_FED_UGUNK_DFR)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_DFR
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_DFR
+G1 <- One_data$BBRR2_FED_UGUNK_DFR
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_DFR stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_DFR",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_NOPROG :: Not making progress rate ######################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_NOPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_NOPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_NOPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_NOPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_NOPROG.(BBRR2_FED_UGUNK_NOPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_NOPROG
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_NOPROG
+G1 <- One_data$BBRR2_FED_UGUNK_NOPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_NOPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_NOPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(min(G0),3), 
+     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+     x = 1.34, 
+     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_MAKEPROG :: Making progress rate ########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_MAKEPROG)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_MAKEPROG)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_MAKEPROG))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_MAKEPROG,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.07) +
+  scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_MAKEPROG.(BBRR2_FED_UGUNK_MAKEPROG)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.07, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_MAKEPROG
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_MAKEPROG
+G1 <- One_data$BBRR2_FED_UGUNK_MAKEPROG
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_MAKEPROG stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_MAKEPROG",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(G1),3), 
+     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_PAIDINFULL :: Paid in full rate #########################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_PAIDINFULL)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_PAIDINFULL)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_PAIDINFULL))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_PAIDINFULL,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.05) +
+  scale_x_continuous(breaks=seq(0,1,.05)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_PAIDINFULL.(BBRR2_FED_UGUNK_PAIDINFULL)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.05, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_PAIDINFULL
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_PAIDINFULL
+G1 <- One_data$BBRR2_FED_UGUNK_PAIDINFULL
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_PAIDINFULL stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_PAIDINFULL",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+######################################################################################################################################################################
+##### VARIABLE: BBRR2_FED_UGUNK_DISCHARGE :: All loans discharged rate ##################################################################################################
+######################################################################################################################################################################
+CSC18 <- CollegeSC18 %>% filter(is.na(PCTPELL)==F,is.na(BBRR2_FED_UGUNK_DISCHARGE)==F) %>% select(PCTPELL,PCTPELL_CAT,BBRR2_FED_UGUNK_DISCHARGE)
+Cat_var <- CSC18$PCTPELL_CAT
+CSC18 %>% summary()
+
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(BBRR2_FED_UGUNK_DISCHARGE))
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+
+ggplot(CSC18, aes(x=BBRR2_FED_UGUNK_DISCHARGE,fill=PCTPELL_CAT)) + geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +
+  geom_histogram(aes(y=stat(count)/sum(count),fill=PCTPELL_CAT),color="black",binwidth=.034) +scale_x_continuous(breaks=seq(0,1,.07)) + scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(name="group",values=c("springgreen","cadetblue2"),labels=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"))+
+       facet_grid(PCTPELL_CAT ~ .) + xlab("Percentage of BBRR2_FED_UGUNK_DISCHARGE.(BBRR2_FED_UGUNK_DISCHARGE)") +
+       labs(title= "Figure 1: Histogram of BBRR2_FED_UGUNK_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)") +
+       geom_vline(data=mu, aes(xintercept=grp.mean, color=PCTPELL_CAT),
+                  linetype="dashed",lwd=1.1,show.legend = F) +
+       stat_bin(aes(y=..count../sum(..count..),label=paste(round(..count../sum(..count..),4)*100,"%",sep=" ")),binwidth=.034, geom="text",vjust=-.5)
+
+Quant_var <- CSC18$BBRR2_FED_UGUNK_DISCHARGE
+
+G0 <- Zero_data$BBRR2_FED_UGUNK_DISCHARGE
+G1 <- One_data$BBRR2_FED_UGUNK_DISCHARGE
+
+boxplot(Quant_var~Cat_var,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of BBRR2_FED_UGUNK_DISCHARGE stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="BBRR2_FED_UGUNK_DISCHARGE",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(G1),pch=7)
+points(1,mean(G0),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(G0)$stats, 
+     labels = paste(round(boxplot.stats(G0)$stats*100,2),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(G0),3), 
+#     labels = paste((round(min(G0),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(max(G0),3), 
+     labels = paste((round(max(G0),3)*100),"%",sep=" "), 
+     x =  1.34, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(mean(G0),3), 
+     labels = paste((round(mean(G0),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(G1)$stats, 
+     labels = paste(round(boxplot.stats(G1)$stats*100,2),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(G1),3), # leftside 60%
+     labels = paste((round(mean(G1),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(G1),3), 
+     labels = paste((round(max(G1),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+#text(y = round(min(G1),3), 
+#     labels = paste((round(min(G1),3)*100),"%",sep=" "),
+#     x = 2.33, 
+#     col = "black", 
+#     cex = 1.5)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+```
+

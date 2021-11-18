@@ -1,0 +1,361 @@
+---
+title:  "Deliverable_One"
+author: "Nathaniel Jones"
+subtitle: "February 22nd, 2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+```
+
+```{r read in dataset and set the mood, echo=FALSE}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+```
+
+```{r Merge,echo=FALSE}
+# Hey r!
+public1 <- CollegeSC18 %>%                               # Look at the original dataset,
+            filter(CONTROL == 1 & ICLEVEL == 1) %>%      # filter-in-keep Public (4-year) Title IV institutions,
+            select(NPT4_PUB,NPT4_PRIV)                   # select Average Net Price variables: NPT4_PUB & NPT4_PRIV,
+public <- public1 %>% summary()                          # describe
+private1 <-CollegeSC18 %>%                               # Look at the original dataset,
+            filter(CONTROL > 1 & ICLEVEL == 1) %>%       # filter-in Private (4-year) Title IV institutions,
+            select(NPT4_PUB,NPT4_PRIV)                   # select Average Net Price variables: NPT4_PUB & NPT4_PRIV,
+private <- private1 %>% summary()                        # describe
+
+
+# Filter out non-(4-year) Title IV institutions and create a merged column: public and private average net price.
+working <- CollegeSC18 %>% filter(ICLEVEL == 1 ) %>%                                                  # filter out non-(4-year) Title IV institutions.
+                           mutate( "NPT4_ALL" = ifelse((is.na(NPT4_PUB)==TRUE),                       # create a merged col.
+                                                        ifelse((is.na(NPT4_PRIV)==TRUE),NA,NPT4_PRIV) # IF NPT4_PUB is missing, THEN use NPT4_PRIV,
+                                                                              ,NPT4_PUB) )            # ELSE IF NPT4_PRIV is missing, THEN NA.
+working %<>% filter(is.na(NPT4_ALL) == FALSE)                                                         # filter-in non-missing observations and save.
+A12 <- working %>% select(NPT4_ALL) %>% summary()                                                     # summary()
+
+lengy <- length(working$NPT4_ALL)
+PUB1 <- sum(!is.na(public1 %>% filter(is.na(NPT4_PUB)==FALSE) %>% select(NPT4_PUB)))
+PRIV2 <- sum(!is.na(private1 %>% filter(is.na(NPT4_PRIV)==FALSE) %>% select(NPT4_PRIV)))
+```
+
+```{r}
+working %>% select(NPT4_ALL) %>% summary()
+
+working_TWO <- working %>% filter(NPT4_ALL < 40000)
+
+working_TWO %>% select(NPT4_ALL) %>% summary()
+```
+
+```{r }
+vari <- working_TWO$NPT4_ALL
+
+boxplot(vari,
+        main="Figure 2: Boxplot of Avg Net Price (n = 2284)",
+        cex.main=1.7,
+        ylab="Avg Net Price (67.65 to 97.47)",
+        cex.lab=1.5,
+        boxwex=0.4, 
+        cex.axis=1.5,
+        col= sample(cbPalette,1))		
+text(y = boxplot.stats(vari)$stats, 
+labels = round(boxplot.stats(vari)$stats,1), x = 1.20, cex = 1.5)
+text(y = round(max(vari),1), labels = round(max(vari),1), x = 1.20, cex = 1.5)
+points(mean(vari),pch=7, cex=1.9,col="blanchedalmond") 
+text(y = round(mean(vari),1), labels = round(mean(vari),1), x = 0.80, cex = 1.5)  
+```
+
+```{r }
+vari2 <- working$NPT4_ALL
+
+boxplot(vari2,
+        main="Figure 2: Boxplot of Avg Net Price (n = 2284)",
+        cex.main=1.7,
+        ylab="Avg Net Price (67.65 to 97.47)",
+        cex.lab=1.5,
+        boxwex=0.4, 
+        cex.axis=1.5,
+        col= sample(cbPalette,1))		
+text(y = boxplot.stats(vari)$stats, 
+labels = round(boxplot.stats(vari)$stats,1), x = 1.20, cex = 1.5)
+text(y = round(max(vari),1), labels = round(max(vari),1), x = 1.20, cex = 1.5)
+points(mean(vari),pch=7, cex=1.9,col="blanchedalmond") 
+text(y = round(mean(vari),1), labels = round(mean(vari),1), x = 0.80, cex = 1.5)  
+```
+
+
+```{r TOP_Parametric T-test template, echo=FALSE}
+# Parametric T-test
+#           Variable: NPT4_ALL
+#         Definition: Average net price for Title IV institutions either public or private.
+# Hypothesized Value: $18,500
+#         Source URL: https://nces.ed.gov/programs/digest/d19/tables/dt19_331.30.asp
+# H0: Mean(NPT4_ALL) = $18,500
+# Ha: Mean(NPT4_ALL) > $18,500
+framed <- working$NPT4_ALL # label what variable we want to test. INPUT: frame & variable name
+
+hypo_val <- (18500)               # input the hypothesized value.        INPUT: hypothesized value
+confy <- (.95)                    # input the desired confidence.        INPUT: level of confidence
+
+n_size <- length(framed)          # label the sample size.
+observed_mu <- mean(framed)       # label the sample mean.
+s <- sd(framed)                   # label the sample std dev.
+use_this <- ((s)/(sqrt(n_size)))  # label this for ease.
+
+para_test_stat <- ((observed_mu)-(hypo_val))/((s)/(sqrt(n_size)))       # compute the T-test statistic.             
+p_val <- pt(para_test_stat,(n_size)-1,lower.tail = FALSE)               # compute the p-value             
+con_interval <- observed_mu + c(-1,1)*qt(confy,(n_size)-1)*(use_this)   # compute confidence interval.
+
+#para_test_stat # print parametric test statistic.
+#p_val          # print p-value.
+#con_interval   # print confidence interval.
+```
+
+```{r TOP_Nonparametric Binomial test template, echo=FALSE}
+# Nonparametric Binomial distribution test
+#           Variable: NPT4_ALL
+#         Definition: Average net price for Title IV institutions either public or private.
+# Hypothesized Value: $18,500
+#         Source URL: https://nces.ed.gov/programs/digest/d19/tables/dt19_331.30.asp
+# H0: Median(NPT4_ALL) = $18,500
+# Ha: Median(NPT4_ALL) > $18,500
+#sort(vari) 
+
+pp <- (.5)               # input probability.
+Hypo_val <- (18500)      # input hypothesis value.
+vari <- working$NPT4_ALL # input variable.
+order_vari <- sort(vari) # sort the data.
+
+nonPara_tst <- sum(vari > Hypo_val)              # get test statistic.
+n_size <- sum(!is.na(vari))                      # get sample size.
+p_value <- (1-pbinom((nonPara_tst-1),n_size,pp)) # pbinom() will give the p-value for the lower-tail. 1-pbinom() will give the upper-tail p-value.
+Con_lvl <- sum(dbinom(1095:1189,n_size,pp))      # get the confidence interval positions (a) and (b-1).
+
+#nonPara_tst       # print nonparametric test statistic.
+#n_size            # print sample size.
+#p_value           # print p-value.
+#Con_lvl           # print level of confidence.
+#order_vari[1095]  # print a.                       
+#order_vari[1190]  # print b.
+
+# DISCLAIMER: CLICKING THE SECOND LINK WILL DIRECTLY DOWNLOAD THE DATA FROM THE API AS A .zip. 
+```
+
+\
+\
+\
+
+#### `r ftext('Background Information and Variable description', ft)`
+
+|       The data used to test the hypothesized value came from Department of Educations *Integrated Post-secondary Education Data System* (IPEDS). A copy of the raw data can be found at this [link](https://data.ed.gov/dataset/college-scorecard-all-data-files-through-6-2020/resources) by clicking the green button `r ftext('‘Go To Resource’', fp_text(color = "#296F0D"))`. One can also click this direct link [here](https://ed-public-download.app.cloud.gov/downloads/CollegeScorecard_Raw_Data_01192021.zip) to download the data directly from the College Scorecard API. This data was updated on December 20th, 2020 to include the 2017-2018 school year. The focus of this paper will be on the 2017-2018 school year data, in particular the variables corresponding to the average Net Price at an institution.
+
+| *Variable*  |                            *Definition*      | *Type of institution* |    *n*    |
+|-------------|----------------------------------------------|-----------------------|-----------|
+| *NPT4_PUB*  | Average net price for Title IV institutions. | Public institutions   | `r PUB1`  |
+| *NPT4_PRIV* | Average net price for Title IV institutions. | Private institutions  | `r PRIV2` |
+
+: Variable Definitions
+
+|           |                                                                                     |
+|-----------|-------------------------------------------------------------------------------------|
+| *Value:*  | \$`r Hypo_val` --                                                                   |
+|           | Average Net Price (in constant 2018-19 dollars) for (4-year) Title IV institutions. |
+| *Claim:*  | That the Average Net price at a (4-year) Title IV institution is \$`r Hypo_val`.    |
+| *Source:* | National Census for Educational Statistics (2017-18 school year).                   |
+| *URL:*    | <https://nces.ed.gov/programs/digest/d19/tables/dt19_331.30.asp>                    |
+
+: Hypothesis
+
+\newpage
+
+#### `r ftext('Hypothesis and Results', ft)`
+
+|      The National Census for Educational Statistics (NCES) claims that the average Net Price at a (4-year) Title IV institution during the 2017-2018 school year is \$`r Hypo_val`. My data shows for the 2017-2018 school year the average Net Price is higher than the claimed value. In fact, we are 95% confident that the true average Net Price for (4-year) Title IV institutions is between \$`r con_interval[1]` to \$`r con_interval[2]`. Some caution should be taken here; we have a large sample of `r lengy` (4-year) Title IV institutions and the data displays no evidence that suggests that the data could have came from a population that is normally distributed.
+|       If a researcher is interested in testing if the median is equal to \$`r Hypo_val`, then the data does not contradict that the median is \$`r Hypo_val`. In fact, we are 95% confident that for the 2017-2018 school year the true median net price for a (4-year) Title IV institutions is between \$`r order_vari[1095]` and \$`r order_vari[1190]`.
+|       Since the data displayed no evidence that suggests that the sample came from a normally distributed population and our sample size is large (`r lengy`), the results from the nonparametric test on the median may yield better accuracy over the parametric results for the mean. This is because the results from the parametric test assumes that the mean is approximately close to the center of the distribution, whereas the results from the nonparametric test uses the sample's distribution during the test on the median, and is therefore not affected by a skewed distribution.
+| 
+
+#### `r ftext('Subset, Histogram, and Boxplot', ft)`
+
+|        For this hypothesis, I filtered in (4-year) Title IV institutions and merged the variables **NPT4_PUB** and **NPT4_PRIV** into one column. I labeled it **NPT4_ALL**. Note that the variable prefix *NPT4\_* describes the average Net Price for all students at an institution. The suffix \*\_PUB\* associates the column with Public institutions while the suffix \*\_PRIV\* associates the column with Private institutions. Since my hypothesized value is for all (4-year) Title IV institutions, I merged these columns. The table below displays the descriptive statistics for the data when a Public (Left two columns) or a Private (Middle two columns) filter is applied. The rightmost columns display the descriptive statistics for the merged column containing both private and public institutions data.
+
+     **Descriptive Statistics for the Average Net Price (NPT4) at a (4-year) institution**    *Public Institutions data*              \#\#       *Private Institutions data*            \#\#       *Merged data*
+
+| \*\*\_PUB     | \*\*\_PRIV     | \#\# | \*\*\_PUB      | \*\*\_PRIV      | \#\# | \*\*\_ALL  |
+|---------------|----------------|------|----------------|-----------------|------|------------|
+| `r public[1]` | `r public[8]`  | \#\# | `r private[1]` | `r private[8]`  | \#\# | `r A12[1]` |
+| `r public[3]` | `r public[10]` | \#\# | `r private[3]` | `r private[10]` | \#\# | `r A12[3]` |
+| `r public[4]` | `r public[11]` | \#\# | `r private[4]` | `r private[11]` | \#\# | `r A12[4]` |
+| `r public[6]` | `r public[13]` | \#\# | `r private[6]` | `r private[13]` | \#\# | `r A12[6]` |
+
+\newpage
+
+|       Next, a histogram, boxplot, and Q-Q plot were created from the column NPT4_ALL. There are 2284 (4-year) Title IV institutions in the test sample. In twenty-five bins, the histogram shows a slight skewness to the right. To help visualize the results, three lines were placed on the histogram. The `r ftext('red', fp_text(color = 'red'))` dashed line is the hypothesized value of \$`r Hypo_val`. The two `r ftext('sandybrown', fp_text(color = "sandybrown"))` lines correspond to the 95% confidence interval for the median (\$`r order_vari[1095]`, \$`r order_vari[1190]`). As one can see from the histogram in Figure 1, the values to the right of the confidence interval for the median become proportionally less frequent than values to the left. The boxplot in Figure 2 on the next page shows many outliers above the upper quartile, giving further evidence to suggest that the data is skewed right. From the Q-Q plot, the data shows a curve at each end of the line suggesting a non-linear relationship is present. On the vertical axis, three horizontal lines were placed corresponding to the hypothesized value( in `r ftext('red', fp_text(color = "red"))` ) and the 95% confidence interval for the median( in `r ftext('sandybrown', fp_text(color = "sandybrown"))` ). On the horizontal axis, a vertical line was placed in `r ftext('red', fp_text(color = 'red'))` at zero. These four lines partition the Q-Q plot into quadrants. From the Q-Q plot, one can see that the observations above the confidence interval's upper bound (\$`r order_vari[1190]`) are distributed along a much larger range than observations below the confidence interval's lower bound (\$`r order_vari[1095]`). With this information, we can conclude that there is not enough evidence to suggest that the data came from a normally distributed population.
+
+```{r Histogram ,echo=FALSE}
+vari <- working$NPT4_ALL
+order_vari <- sort(vari) # sort the data.
+low_bound <- order_vari[1095]
+upp_bound <- order_vari[1190]
+
+# bin with 2136 = (((52200)-(-1200))/(25)))
+# 52200 - 2136 = 50064 which is less than the maximum. Therefore, there must be a data point.
+
+# Histogram: ADD abline()
+bins1<- seq((-1150),52200, by=(((52200)-(-1150))/(20))) # Create the bins
+h<-hist(vari, # assign the histogram to h
+        breaks=bins1,
+        plot=FALSE)
+h$counts=round(h$counts/sum(h$counts),3) # change frequencies to relative frequencies.
+plot(h, main="Figure 1: Histogram of Avg Net Price (n = 2284)", # make the plot look nice.
+     cex.main=1.7,
+     xlab="Avg Net Price",
+     ylab="Relative Frequency",
+     cex.lab=1.5,            
+     ylim=c(0,((max(h$counts))+(max(h$counts)*(.10)))), # assign the y-axis limit to be the number 10% greater than the max frequency.
+     axes=FALSE,      
+     labels=TRUE,
+     col = sample(cbPalette,1))      
+axis(2, cex.axis=1.5) 
+axis(1,at=bins1, labels=bins1, cex.axis=1.5) 
+
+abline(v = c(low_bound,upp_bound,hypo_val), # v = vertical position of the line. Since I want 3 lines I used c(lowerbound,upperbound,hypothesized value)
+       col = c("sandybrown","sandybrown","red"), # color the lines
+       lty = c(1,1,2),                           # change the 
+       lwd = c(3,3,3))
+```
+
+```{r Boxplot and QQ plot ,echo=FALSE}
+# Boxplot
+boxplot(vari,
+        main="Figure 2: Boxplot of Avg Net Price (n = 2284)",
+        cex.main=1.7,
+        ylab="Avg Net Price (67.65 to 97.47)",
+        cex.lab=1.5,
+        boxwex=0.4, 
+        cex.axis=1.5,
+        col= sample(cbPalette,1))		
+text(y = boxplot.stats(vari)$stats, 
+labels = round(boxplot.stats(vari)$stats,1), x = 1.20, cex = 1.5)
+text(y = round(max(vari),1), labels = round(max(vari),1), x = 1.20, cex = 1.5)
+points(mean(vari),pch=7, cex=1.9,col="blanchedalmond") 
+text(y = round(mean(vari),1), labels = round(mean(vari),1), x = 0.80, cex = 1.5)  
+
+
+# QQ plot
+qqnorm(vari,main="Figure 3: Q-Q plot for the Average Net Price (n = 2284)",pch=19)
+qqline(vari,col = "steelblue")
+abline(v = 0, col="red")
+abline(h = c(order_vari[1095], order_vari[1190],18500),
+       col = c("sandybrown","sandybrown","red"),
+       lty = c(1,1,2),
+       lwd = c(1,1,3))
+```
+
+#### `r ftext('Shapiro-Wilk test', ft)`
+
+The results of the Shapiro-Wilk normality test gave further evidence that the data is skewed. Since the p-value (`r shapiro.test(vari)$p.value`) is less than the chosen level of confidence (`r (1-confy)*100`%), we can conclude that the data is not normally distributed.
+
+```{r , echo=FALSE}
+shap_wilk <- shapiro.test(vari)
+#shap_wilk
+#shap_wilk$p.value
+```
+
+#### `r ftext('Conclusions from the parametric T-test', ft)`
+
+```{r parametric T-test template, echo=FALSE}
+# parametric T-test
+#           Variable: NPT4_ALL
+#         Definition: Average net price for Title IV institutions either public or private.
+# Hypothesized Value: $18,500
+#         Source URL: https://nces.ed.gov/programs/digest/d19/tables/dt19_331.30.asp
+# H0: Mean(NPT4_ALL) = $18,500
+# Ha: Mean(NPT4_ALL) > $18,500
+framed <- working$NPT4_ALL # label what variable we want to test. INPUT: frame & variable name
+
+hypo_val <- (18500)               # input the hypothesized value.        INPUT: hypothesized value
+confy <- (.95)                    # input the desired confidence.        INPUT: level of confidence
+
+n_size <- length(framed)          # label the sample size.
+observed_mu <- mean(framed)       # label the sample mean.
+s <- sd(framed)                   # label the sample std dev.
+use_this <- ((s)/(sqrt(n_size)))  # label this for ease.
+# compute the T-test statistic.
+para_test_stat <- ((observed_mu)-(hypo_val))/((s)/(sqrt(n_size)))               
+# compute the p-value
+p_val <- pt(para_test_stat,(n_size)-1,lower.tail = FALSE)                       
+# compute confidence interval.
+con_interval <- observed_mu + c(-1,1)*qt(confy,(n_size)-1)*(use_this)   
+
+#para_test_stat # print parametric test statistic.
+#p_val          # print p-value.
+#con_interval   # print confidence interval.
+
+#t.test(framed,y=NULL,alternative="greater",paired=FALSE,mu=hypo_val,var.equal=FALSE,.95)
+```
+
+|        Since we received a p-value of (`r (p_val)`) and assumed a (`r (1-confy)*100`%) level of significance, we have enough evidence to reject the claimed mean of \$`r (hypo_val)`. Therefore, we have enough evidence to conclude that there is a (`r (p_val)*100`)% chance of getting a random sample of `r n_size` institutions to have a mean Net Price of \$`r (hypo_val)` or less. This probability is sufficiently low enough to suggest that the true mean Net Price is higher than the hypothesized value of \$`r (hypo_val)`. With this evidence, we can be `r (confy)*100`% confident that the true mean Net Price for (4-year) Title IV institutions is between \$`r (con_interval[1])` to \$`r (con_interval[2])` for the 2017-2018 school year. As stated previously, since we do not have evidence to suggest that this data came from a normally distributed population, the results of this parametric test may yield a false-positive due to the data being skewed. The nonparametric test on the median should yield a more accurate results for this sample.
+
+\
+
+#### `r ftext('Conclusions from the Nonparametric Binomial Distribution test', ft)`
+
+```{r Nonparametric Binomial test template, echo=FALSE}
+# Nonparametric Binomial distribution test
+#           Variable: NPT4_ALL
+#         Definition: Average net price for Title IV institutions either public or private.
+# Hypothesized Value: $18,500
+#         Source URL: https://nces.ed.gov/programs/digest/d19/tables/dt19_331.30.asp
+# H0: Median(NPT4_ALL) = $18,500
+# Ha: Median(NPT4_ALL) > $18,500
+#sort(vari) 
+
+pp <- (.5)               # input probability.
+Hypo_val <- (18500)      # input hypothesis value.
+vari <- working$NPT4_ALL # input variable.
+order_vari <- sort(vari) # sort the data.
+
+nonPara_tst <- sum(vari > Hypo_val)              # get test statistic. (Number of successes)
+n_size <- sum(!is.na(vari))                      # get sample size.
+p_value <- (1-pbinom((nonPara_tst-1),n_size,pp)) # pbinom() will give the p-value for the lower-tail. 1-pbinom() will give the upper-tail p-value.
+Con_lvl <- sum(dbinom(1095:1189,n_size,pp))      # get the confidence interval positions (a) and (b-1).
+
+#nonPara_tst       # print nonparametric test statistic.
+#n_size            # print sample size.
+#p_value           # print p-value.
+#Con_lvl           # print level of confidence.
+#order_vari[1095]  # print a.                       
+#order_vari[1190]  # print b.
+
+#binom.test(nonPara_tst,n_size,.5,"greater",.95)
+```
+
+|        We received a p-value of `r p_value` which is slightly greater than the chosen level of confidence (`r (1-confy)`). This suggests that getting `r nonPara_tst` out of `r n_size` institutions having a average Net Price above the claimed value of \$`r Hypo_val` is significantly more than the number of institutions expected to be above the median [(`r (n_size)*(pp)`) = (`r n_size`)\*(`r pp`)]. With this information we have enough evidence to be `r 100*(Con_lvl)`% confident that the true median Net Price for a (4-year) Title IV institution is between \$`r order_vari[1095]` and \$`r order_vari[1190]` for the 2017-2018 school year. Considering that this interval contains the hypothesized value, we can conclude that the true median Net Price for a (4-year) Title IV institution can in fact be the claimed value (\$`r Hypo_val`).
+
+#### `r ftext('Conclusion', ft)`
+
+|       There is evidence to support the conclusion that the sample is skewed. Since the parametric T-test has less power to detect differences for skewed data, the results may yield a false-positive. The nonparametric binomial distribution test has more power to detect differences for skewed data. For this reason, it is suggested to use the results of the nonparametric test. That is, at a `r 100*(Con_lvl)`% level of confidence, we can conclude that the true median Net Price can in fact be the claimed value of \$`r Hypo_val` since this value is in the `r 100*(Con_lvl)`% confidence interval. Further research with a more complex test, such as testing public and private institutions as their own category, may produce a more accurate conclusion.

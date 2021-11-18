@@ -1,0 +1,225 @@
+---
+title: "Deliverable 4"
+author: "Nathaniel Jones"
+output: word_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+#install.packages("ggpubr") 
+#install.packages("gplots") 
+#install.packages("ggfortify")
+#install.packages("broom") 
+#install.packages("multcompView") 
+#install.packages('regclass')
+#install.packages("stargazer")
+#install.packages("car")
+#install.packages("MASS")
+#install.packages("caret")
+#install.packages("stats")
+#install.packages("gmodels")
+#install.packages("corrplot")
+#install.packages("SASmarkdown")
+
+library(agricolae)
+library(corrplot)
+library(ggpubr)
+library(gplots)
+library(ggfortify)
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(plyr)       # ddply
+
+
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+
+inline_hook <- function(x) {                        # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+
+knitr::knit_hooks$set(inline = inline_hook)         # this makes the numbers not print in scientific notation during inline code.
+
+wrapper <- function(x,d=4) { round(x,d) }
+```
+
+```{r read in dataset and set the mood, echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+on_brand_Palette <- c("#ffc629","#b0b3b2","#9c5555","#7e6f9e","#52949a")
+
+set.seed(59914120)
+iters <- 10000
+```
+
+```{r Data Manipulation,echo=F}
+CSC18_REG <- CollegeSC18 %>% filter(is.na(DEP_DEBT_MDN)==F) #%>% filter(DEP_DEBT_N>1000) 
+CSC18_REG %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(PCTPELL <= .5,0,          # Check Condition One, return 0 if true, 
+                                                1),                       # ELSE return 1
+                                         NA)) %>% filter(is.na(PCTPELL_CAT)==F) %>% mutate(PCTPELL_CAT = as.factor(PCTPELL_CAT))
+#CSC18_REG %>% select(IND_DEBT_MDN) %>% summary()
+```
+
+```{r NonParametric Perm test,echo=F}
+temp_df <- CSC18_REG %>% select(IND_DEBT_MDN,DEP_DEBT_MDN)
+colnames(temp_df) <- c("x","y")
+temp_lm <- lm(y~x,temp_df)
+sum_temp_lm <- summary(temp_lm)
+
+obs_test_statistic <- temp_lm$coefficients[2]
+obs_test_statistic_wrapped <- wrapper(obs_test_statistic)
+n <- 50000                         # number of iterations
+temp_teststat_df <- rep(NA,n)      # create empty frame with n rows to fill
+abs_temp_teststat_df <- rep(NA,n)  # create empty frame with n rows to fill
+
+for(i in 1:n) {
+  permuted_y <- sample(temp_df$y,
+                      length(temp_df$y),
+                      replace=F)
+  
+  temp_teststat_df[i] <- lm(permuted_y~temp_df$x)$coeff[2]
+  
+  abs_temp_teststat_df[i] <- abs( lm(permuted_y~temp_df$x)$coeff[2] )
+}
+
+successes <- sum( temp_teststat_df >= (obs_test_statistic) -1e-10) 
+
+two_tail_pval <- mean( temp_teststat_df >= obs_test_statistic - (1e-10) )
+```
+
+#####  
+
+# `r ftext('Table of Contents', ft)`
+
+EXECUTIVE SUMMARY   
+-  **Hypothesis**    
+-  **Summary of Findings**    
+-  **Actionable Items**    
+
+# `r ftext('Appendix', ft)`
+
+A.  DATA MANIPULATION 
+B.  DO THE RESIDUALS FOLLOW A NORMAL DISTRIBUTION?
+C.  NONPARAMETRIC TEST: Permutation Test of the Slope/Correlation.
+D.  VISUALS with categorical variables
+
+# `r ftext('Executive Summary', ft)`
+
+**Summary of Findings:**
+
+**Hypothesis:** Do students who are independent from their parents take on the same amount of debt as students who are dependent?
+
+#####  
+
+Students that are financially dependent on their parents are offered less in federal loans by the government than their independent peers. The "average" student debt at a university is calculated for both independent and dependent students.
+
+The data shows that the median debt accumulated by an independent student at a university is higher than the median debt accumulated by a dependent student at the same university. In fact, for every unit increase in the median independent student debt accumulated at a university, the median dependent student debt at the same university will increase by `r obs_test_statistic_wrapped`. A Nonparametric test was chosen as the test procedure due to the skewness present in the residuals of the model.
+
+\newpage
+
+**Actionable Items:**
+
+-  A positive relationship between the median dependent student debt and the median independent student debt was found (as seen in Figure 1 represented by a blue line).
+-  While a perfect relationship (represented by a red line) appears as a 1:1 function starting at zero, the slope of the actual relationship between the variables is more gradual.
+-  Thus, the median independent student debt accumulates faster than the median dependent student debt.
+
+```{r Initial Scatterplot,echo=F}
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,DEP_DEBT_MDN)) + geom_point() + xlab("Median Independent student debt taken at the University") + 
+                                                                      ylab("Median Dependent student debt taken at the University") +
+                            labs(title="Figure 1: Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F) + theme_bw() +
+                            geom_abline(intercept=0,slope=1,col="red",size=1.5)
+                            
+```
+
+#####  
+
+## `r ftext('A. Data Manipulation', ft)`
+
+|             There were 4,597 observations used in this report. These observations contained no missing values for the variables representing the median dependent student debt, the median independent student debt, and the Majority or Minority Pell category. 
+
+\newpage
+
+## `r ftext('B. DO THE RESIDUALS FOLLOW A NORMAL DISTRIBUTION?', ft)`
+
+```{r,echo=F,warning=F}
+linear_model <- lm(DEP_DEBT_MDN~IND_DEBT_MDN,CSC18_REG)
+lm_resids <- linear_model$residuals
+
+# QQ plot on residuals
+qqnorm(lm_resids,main="Figure 2: Q-Q plot of the Residual Errors for the Regression of the median dependent debt on the median independent debt",pch=19,cex.main=.84)
+qqline(lm_resids,col = "steelblue")
+abline(v = 0, col="red")
+
+# KS test on residuals
+KS_test <- ks.test(lm_resids,"pnorm",
+        mean=mean(lm_resids),
+        sd=sd(lm_resids))
+```
+
+Figure 2 displays the Q-Q plot of the Residual Errors for the model predicting the median dependent student debt at a university. This plot shows a strong curve at the extreme ends of the distribution suggesting that the tails are skewed. A KS test are performed on the residuals and found a p-value of `r KS_test$p.value`. Since this p-value is less than 0.05, the results of the KS test is that the shape of the distribution is different from a normal distribution. Therefore, the residuals of the model are not normally distributed.
+
+#####  
+
+## `r ftext('C. NONPARAMETRIC TEST: Permutation Test of the Slope/Correlation.', ft)`
+
+Since we found that the residuals were not normally distributed, utilizing the Nonparametric Permutation test is suggested over the Parametric Simple Linear Regression test. The observed test statistic for the slope is `r obs_test_statistic_wrapped`. There is a `r paste((two_tail_pval*100),"%",sep="")` chance that I will observe `r successes` or more permutations out of `r n` permutations to be above the observed slope, `r obs_test_statistic_wrapped` or its negative (`r -1*obs_test_statistic_wrapped`), if the true slope is 0. With this information, we can see that the assumption that the true slope is 0 has been violated, indicating that the true slope is not zero. In terms of the variables, the median independent student debt at a university is important in predicting that university's median dependent student debt. In fact, according to this model, for every unit increase in the median independent student debt the median dependent student debt will increase by `r obs_test_statistic_wrapped`.
+
+#####  
+
+## `r ftext('D. Histogram of the permuted test statistics', ft)`
+
+The histogram of the permuted slopes in Figure 3 is created by randomizing y values and then computing the slope from the randomized y values and the original x values. We can see that the majority of the permuted slopes are less than 0.1 in magnitude. Since the permuted slopes were created with the assumption that there is no relationship between the variables, we would expect the observed test statistic to be randomly placed within the distribution of permuted slopes. The sample's observed test statistic is `r obs_test_statistic_wrapped`, indicated by vertical blue lines at -`r obs_test_statistic_wrapped` and `r obs_test_statistic_wrapped` in Figure 4. 
+
+```{r Histograms of Perm Slopes,echo=F}
+hist(temp_teststat_df,20, main = "Figure 3: Permutation Distribution of Slopes",xlab = "Slope of the Permuted models",ylab = "Frequency of the Slope")
+abline(v = c(-obs_test_statistic,obs_test_statistic), col = "blue", lwd = 3)
+```
+
+```{r Histograms of Perm Slopes ZOOMED,echo=F}
+hist(temp_teststat_df,20, main = "Figure 4: Permutation Distribution of Slopes",xlim=c(-1,1),xlab = "Slope of the Permuted models",ylab = "Frequency of the Slope")
+abline(v = c(-obs_test_statistic,obs_test_statistic), col = "blue", lwd = 3)
+```
+
+
+## `r ftext('PARAMETRIC TEST: Simple Linear Regression and Test of Slope/Correlation.', ft)`
+
+The Q-Q plot indicates that the residuals of the model are not normally distributed. Since the Parametric Regression test of Slope/Correlation is sensitive to skewness, the Nonparametric test of Slope/Correlation was used to test this sample.
+
+```{r UNUSED PARAMETRIC TEST,include=F,echo=F}
+linear_model2 <- lm(DEP_DEBT_MDN~IND_DEBT_MDN,CSC18_REG)
+linear_model2
+summary(linear_model2)
+correl(CSC18_REG$DEP_DEBT_MDN,CSC18_REG$IND_DEBT_MDN,
+       method="pearson")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+```

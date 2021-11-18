@@ -1,0 +1,634 @@
+---
+title: "Working_ONE"
+author: "Nathaniel Jones"
+output: word_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+#install.packages("ggpubr") 
+#install.packages("gplots") 
+#install.packages("ggfortify")
+#install.packages("broom") 
+#install.packages("multcompView") 
+#install.packages('regclass')
+#install.packages("stargazer")
+#install.packages("car")
+#install.packages("MASS")
+#install.packages("caret")
+#install.packages("stats")
+#install.packages("gmodels")
+#install.packages("corrplot")
+#install.packages("agricolae")
+#install.packages("SASmarkdown")
+
+#library(agricolae)
+#library(SASmarkdown)
+library(corrplot)
+library(gmodels)
+#library(stats)
+#library(caret)
+#library(MASS)
+#library(car)
+#library(stargazer)
+#library(regclass)
+library(ggpubr)
+library(gplots)
+library(ggfortify)
+library(multcompView)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(broom)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+library(tidyverse)
+
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE, font.family="Times",font.size=14) # change the color of text easily || Change fonts to Sans Serif
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 9)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+wrapper <- function(x,d=4) {
+  round(x,d)
+}
+```
+
+```{r read in dataset and set the mood, echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+
+CollegeSC18 <- read.csv("Para_Nonpara_Directed_Study/3Deliverable_Four/MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble::tibble(CollegeSC18) %>%
+                          mutate(med_dep = DEP_DEBT_MDN + PLUS_DEBT_INST_MD,
+                                "GRAD_CAT" = ifelse(is.na(OMAWDP8_ALL),NA,
+                                                    ifelse(OMAWDP8_ALL>.75,3,
+                                                          ifelse(OMAWDP8_ALL>.50,2,
+                                                                  ifelse(OMAWDP8_ALL<.25,0,1)))))
+
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+on_brand_Palette <- c("#ffc629","#b0b3b2","#9c5555","#7e6f9e","#52949a")
+
+set.seed(59914120)
+seeeed <- 59914120
+iters <- 10000
+```
+
+# `r ftext('Executive Summary', ft)`
+
+**Hypothesis:** ****?
+
+1.  VISUALS
+2.  DO THE RESIDUALS FOLLOW A NORMAL DISTRIBUTION?
+3.  NONPARAMETRIC TEST: Permutation Test of the Slope/Correlation.
+4.  MORE VISUALS
+
+|             This is where I will continue
+
+## `r ftext('Data Manipulation', ft)`
+
+|             There was 4,597 observations used in this report. These observations contained no missing values for the variables representing the median dependent student debt, the median independent student debt, and the Majority or Minority Pell category. 
+
+```{r,echo=F}
+CSC18_REG <- CollegeSC18 %>% filter(is.na(med_dep)==F) #%>% filter(DEP_DEBT_N>1000) 
+CSC18_REG %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T, # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(PCTPELL <= .5,0, # Check Condition One, return 0 if true, 
+                                                1), # ELSE return 1
+                                         NA),
+                      grad_cat = case_when(OMAWDP8_ALL < .25 ~ "<25%",
+                                           OMAWDP8_ALL < .50 ~ "<50%",
+                                           OMAWDP8_ALL < .75 ~ "<75%",
+                                           OMAWDP8_ALL < 1 ~ "<= 100")
+                     ) %>% 
+               filter(is.na(PCTPELL_CAT)==F) %>% 
+               mutate(PCTPELL_CAT = as.factor(PCTPELL_CAT))
+#CSC18_REG %>% select(IND_DEBT_MDN) %>% summary()
+```
+
+## `r ftext('VISUALS', ft)`
+
+|             Figure 1 below displays a scatterplot for the median dependent student debt by the median independent student debt. This figure shows a positive trend from left to right indicating a positive relationship between the two variables.
+
+```{r,echo=F}
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point() + xlab("Median Independent student debt taken at the University") + 
+                                                                      ylab("Median Dependent student debt taken at the University") +
+                            labs(title="Figure 1: Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F) + theme_bw() 
+```
+
+
+
+## `r ftext('DO THE RESIDUALS FOLLOW A NORMAL DISTRIBUTION?', ft)`
+
+
+|             No. Figure 2 displays the Q-Q plot of the Residual Errors for the model predicting the median dependent student debt at a university. This plot shows a strong curve at the extreme ends of the distributions suggesting that there is a nonlinear relationship between the median independent student debt and the median dependent student debt. A KS test was performed on the residuals and found a p-value of 2.2e-16. Since the KS test has a p-value that is significant, the shape of the distribution is different from a normal distribution. Therefore this models residuals are not normally distributed.
+
+```{r}
+linear_model <- lm(med_dep~IND_DEBT_MDN,CSC18_REG)
+lm_resids <- linear_model$residuals
+
+# QQ plot on residuals
+qqnorm(lm_resids,main="Figure 2: Q-Q plot of the Residual Errors for the Regression of the median dependent debt on the median independent debt",pch=19,cex.main=.84)
+qqline(lm_resids,col = "steelblue")
+abline(v = 0, col="red")
+
+# The Q-Q plot of the residuals looks like a Cubic graph.
+
+# KS test on residuals
+ks.test(lm_resids,"pnorm",
+        mean=mean(lm_resids),
+        sd=sd(lm_resids))
+
+# Since the KS test has a p-value that is significant, the shape of the distribution is different from a normal distribution.
+# Therefore this models residuals are not normally distributed.
+# 
+# Utilizing the nonparametric Permutation test is suggested instead of the parametric test due to the fact that the residuals
+#      of the model do not follow a normal distribution.
+```
+
+## `r ftext('NONPARAMETRIC TEST: Permutation Test of the Slope/Correlation.', ft)`
+
+|             Since we found that the residuals were not normally distributed, utilizing the Nonparametric Permutation test is suggested over the Parametric Simple Linear Regression test. The observed test statistic for the slope is 0.7892. There is a 0% chance that I will observe 0 permutations or more out of 5000 permutations to be above the observed slope, 0.7892 or its negative(-0.7892), if the true slope is 0. 
+
+```{r}
+temp_df <- CSC18_REG[c("IND_DEBT_MDN", "med_dep")]# %>% select(IND_DEBT_MDN, med_dep)
+colnames(temp_df) <- c("x","y")
+temp_lm <- lm(y~x,temp_df)
+summary(temp_lm)
+
+
+obs_test_statistic <- temp_lm$coefficients[2]
+
+#abs(obs_test_statistic)
+
+n <- 5000                         # number of iterations
+temp_teststat_df <- rep(NA,n)     # create empty frame with n rows to fill
+#temp_se_df <- rep(NA,n)     # create empty frame with n rows to fill
+abs_temp_teststat_df <- rep(NA,n) # create empty frame with n rows to fill
+
+#CollegeSC18 
+
+for(i in 1:n) {
+  permuted_y <- sample(temp_df$y,
+                      length(temp_df$y),
+                      replace=F)
+  temp_model <- lm(permuted_y~temp_df$x)
+  temp_teststat_df[i] <- temp_model$coeff[2]
+#  temp_se_df[i] <- temp_model$coeff[2]
+  
+  abs_temp_teststat_df[i] <- abs( temp_model$coeff[2] )
+}
+successes <- sum( temp_teststat_df >= (obs_test_statistic))# -1e-10) )
+successes
+
+one_tail_pval <- mean( temp_teststat_df >= obs_test_statistic)# - (1e-10) )
+#mean(abs(temp_teststat_df) >= obs_test_statistic - (1e-10))
+two_tail_pval <- mean( temp_teststat_df >= obs_test_statistic)# - (1e-10) )
+two_tail_pval
+
+hist(temp_teststat_df,20, main = "Permutation Distribution of Slopes")
+abline(v = c(-obs_test_statistic,obs_test_statistic), col = "blue", lwd = 3)
+
+
+```
+
+```{r}
+#y <- CSC18_REG$med_dep
+#x <- CSC18_REG$IND_DEBT_MDN
+
+set.seed(324)
+x<- 1:4
+y<- c(5,7,9,8)
+
+# This code was taken from professor Hardy's book and shows the code above is correct those numbers are zero.
+obs.lm = lm(y ~ x)
+#summary(obs.lm)
+observed.teststat = obs.lm$coeff[2]
+observed.teststat
+
+temp.teststat = rep(NA, 5000)
+abs.temp.teststat=rep(NA,5000)
+
+n <- 5000
+for(i in 1:n) {
+ permutedY.values <- sample(y,length(y),replace=FALSE)
+ temp.teststat[i] = lm(permutedY.values~x)$coeff[2]
+ abs.temp.teststat[i] = abs(lm(permutedY.values~x)$coeff[2])
+}
+
+successes <- sum(temp.teststat>= (observed.teststat -1e-10))
+successes
+
+#PVALUEupper <- mean(temp.teststat>= (observed.teststat -1e-10))
+#PVALUEupper
+
+PVALUEtwo_sided <-mean(abs.temp.teststat>=(abs(observed.teststat)-1e-10))
+PVALUEtwo_sided
+
+hist(temp.teststat,20, main = "Permutation Distribution of Slopes")
+abline(v = c(-observed.teststat,observed.teststat), col = "blue", lwd = 3)
+
+# Pg. 13 has the p-value interp.
+```
+
+## `r ftext('Histogram of the permuted test statistics', ft)`
+
+|             The histogram of the permuted slopes in Figure &&&.A is created by randomizing y values and then computing the slope from the randomized y values and the original x values. We can see that the majority of the permuted slopes are between -0.04 and 0.06. Since the permuted slopes was created with the assumption that there is no relationship between the variables, we would expect the observed test statistic to be randomly placed within the distribution of permuted slopes. The sample's observed test statistic is 0.7892, indicated by vertical blue lines at -0.7892 and 0.7892 in Figure &&&.B.
+
+```{r}
+hist(temp.teststat,20, main = "Permutation Distribution of Slopes")
+abline(v = c(-observed.teststat,observed.teststat), col = "blue", lwd = 3)
+
+#hist(temp.teststat,20, main = "Permutation Distribution of Slopes") # ,xlim = c(-1,1)
+#abline(v = c(-observed.teststat,observed.teststat), col = "blue", lwd = 3)
+
+#hist(abs(temp_teststat_df),20, main = "Permutation Distribution of Slopes",xlim = c(0,1))
+#abline(v = obs_test_statistic, col = "blue", lwd = 3)
+```
+
+
+## `r ftext('Scatterplot with a Categorical variable', ft)`
+
+|             ........
+
+```{r}
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PCTPELL_CAT)) + 
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PCTPELL_CAT)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PCTPELL_CAT)) + facet_wrap(PCTPELL_CAT~.) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PCTPELL_CAT)) + theme_bw() 
+```
+
+```{r}
+#CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ICLEVEL)) + facet_wrap(PCTPELL_CAT~.) +
+#                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PCTPELL_CAT)) + theme_bw()
+```
+
+```{r Stratified by STABBR}
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=STABBR)) + 
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=STABBR)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=STABBR)) + facet_wrap(STABBR~.) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=STABBR)) + theme_bw() 
+```
+
+```{r Stratified by ACCREDCODE}
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ACCREDCODE)) + 
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ACCREDCODE)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ACCREDCODE)) + facet_wrap(ACCREDCODE~.) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ACCREDCODE)) + theme_bw() 
+```
+
+```{r Stratified by SCHTYPE}
+CSC18_REG %<>% mutate(SCHTYPE = as.factor(SCHTYPE))
+CSC18_REG %>% filter(is.na(SCHTYPE)==F) %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=SCHTYPE)) + 
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=SCHTYPE)) + theme_bw() 
+
+CSC18_REG %>% filter(is.na(SCHTYPE)==F) %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=SCHTYPE)) + facet_wrap(SCHTYPE~.) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=SCHTYPE)) + theme_bw() 
+```
+
+```{r Stratified by HCM2}
+CSC18_REG %<>% mutate(HCM2 = as.factor(HCM2))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HCM2)) + 
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HCM2)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HCM2)) + facet_wrap(HCM2~.) +
+                            labs(title="Linear Model for x1 and y1") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HCM2)) + theme_bw() 
+```
+
+```{r Stratified by MAIN}
+CSC18_REG %<>% mutate(MAIN = as.factor(MAIN))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=MAIN)) + 
+                            labs(title="Linear Model for x1 and y1: MAIN") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=MAIN)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=MAIN)) + facet_wrap(MAIN~.) +
+                            labs(title="Linear Model for x1 and y1: MAIN") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=MAIN)) + theme_bw() 
+```
+
+```{r Stratified by PREDDEG}
+CSC18_REG %<>% mutate(PREDDEG = as.factor(PREDDEG))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PREDDEG)) + 
+                            labs(title="Linear Model for x1 and y1: PREDDEG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PREDDEG)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PREDDEG)) + facet_wrap(PREDDEG~.) +
+                            labs(title="Linear Model for x1 and y1: PREDDEG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PREDDEG)) + theme_bw() 
+```
+
+```{r Stratified by HIGHDEG}
+CSC18_REG %<>% mutate(HIGHDEG = as.factor(HIGHDEG))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HIGHDEG)) + 
+                            labs(title="Linear Model for x1 and y1: HIGHDEG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HIGHDEG)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HIGHDEG)) + facet_wrap(HIGHDEG~.) +
+                            labs(title="Linear Model for x1 and y1: HIGHDEG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HIGHDEG)) + theme_bw() 
+```
+
+```{r Stratified by CONTROL}
+CSC18_REG %<>% mutate(CONTROL = as.factor(CONTROL))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CONTROL)) + 
+                            labs(title="Linear Model for x1 and y1: CONTROL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CONTROL)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CONTROL)) + facet_wrap(CONTROL~.) +
+                            labs(title="Linear Model for x1 and y1: CONTROL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CONTROL)) + theme_bw() 
+```
+
+```{r Stratified by REGION}
+CSC18_REG %<>% mutate(REGION = as.factor(REGION))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=REGION)) + 
+                            labs(title="Linear Model for x1 and y1: REGION") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=REGION)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=REGION)) + facet_wrap(REGION~.) +
+                            labs(title="Linear Model for x1 and y1: REGION") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=REGION)) + theme_bw() 
+```
+
+```{r Stratified by LOCALE}
+CSC18_REG %<>% mutate(LOCALE = as.factor(LOCALE))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=LOCALE)) + 
+                            labs(title="Linear Model for x1 and y1: LOCALE") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=LOCALE)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=LOCALE)) + facet_wrap(LOCALE~.) +
+                            labs(title="Linear Model for x1 and y1: LOCALE") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=LOCALE)) + theme_bw() 
+```
+
+```{r Stratified by CURROPER}
+CSC18_REG %<>% mutate(CURROPER = as.factor(CURROPER))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CURROPER)) + 
+                            labs(title="Linear Model for x1 and y1: CURROPER") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CURROPER)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CURROPER)) + facet_wrap(CURROPER~.) +
+                            labs(title="Linear Model for x1 and y1: CURROPER") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CURROPER)) + theme_bw() 
+```
+
+```{r Stratified by ICLEVEL}
+CSC18_REG %<>% mutate(ICLEVEL = as.factor(ICLEVEL))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ICLEVEL)) + 
+                            labs(title="Linear Model for x1 and y1: ICLEVEL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ICLEVEL)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ICLEVEL)) + facet_wrap(ICLEVEL~.) +
+                            labs(title="Linear Model for x1 and y1: ICLEVEL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ICLEVEL)) + theme_bw() 
+```
+
+```{r Stratified by OPENADMP}
+CSC18_REG %<>% mutate(OPENADMP = as.factor(OPENADMP))
+CSC18_REG %>% filter(is.na(OPENADMP)==F) %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=OPENADMP)) + 
+                            labs(title="Linear Model for x1 and y1: OPENADMP") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=OPENADMP)) + theme_bw() 
+
+CSC18_REG %>% filter(is.na(OPENADMP)==F) %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=OPENADMP)) + facet_wrap(OPENADMP~.) +
+                            labs(title="Linear Model for x1 and y1: OPENADMP") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=OPENADMP)) + theme_bw() 
+```
+
+```{r Stratified by OPEFLAG}
+CSC18_REG %<>% mutate(OPEFLAG = as.factor(OPEFLAG))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=OPEFLAG)) + 
+                            labs(title="Linear Model for x1 and y1: OPEFLAG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=OPEFLAG)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=OPEFLAG)) + facet_wrap(OPEFLAG~.) +
+                            labs(title="Linear Model for x1 and y1: OPEFLAG") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=OPEFLAG)) + theme_bw() 
+```
+
+```{r Stratified by ST_FIPS}
+CSC18_REG %<>% mutate(ST_FIPS = as.factor(ST_FIPS))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ST_FIPS)) + 
+                            labs(title="Linear Model for x1 and y1: ST_FIPS") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ST_FIPS)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ST_FIPS)) + facet_wrap(ST_FIPS~.) +
+                            labs(title="Linear Model for x1 and y1: ST_FIPS") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ST_FIPS)) + theme_bw() 
+```
+
+```{r Stratified by CCBASIC}
+CSC18_REG %<>% mutate(CCBASIC = as.factor(CCBASIC))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCBASIC)) + 
+                            labs(title="Linear Model for x1 and y1: CCBASIC") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCBASIC)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCBASIC)) + facet_wrap(CCBASIC~.) +
+                            labs(title="Linear Model for x1 and y1: CCBASIC") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCBASIC)) + theme_bw() 
+```
+
+```{r Stratified by CCUGPROF}
+CSC18_REG %<>% mutate(CCUGPROF = as.factor(CCUGPROF))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCUGPROF)) + 
+                            labs(title="Linear Model for x1 and y1: CCUGPROF") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCUGPROF)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCUGPROF)) + facet_wrap(CCUGPROF~.) +
+                            labs(title="Linear Model for x1 and y1: CCUGPROF") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCUGPROF)) + theme_bw() 
+```
+
+```{r Stratified by CCSIZSET}
+CSC18_REG %<>% mutate(CCSIZSET = as.factor(CCSIZSET))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCSIZSET)) + 
+                            labs(title="Linear Model for x1 and y1: CCSIZSET") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCSIZSET)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=CCSIZSET)) + facet_wrap(CCSIZSET~.) +
+                            labs(title="Linear Model for x1 and y1: CCSIZSET") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=CCSIZSET)) + theme_bw() 
+```
+
+```{r Stratified by DISTANCEONLY}
+CSC18_REG %<>% mutate(DISTANCEONLY = as.factor(DISTANCEONLY))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=DISTANCEONLY)) + 
+                            labs(title="Linear Model for x1 and y1: DISTANCEONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=DISTANCEONLY)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=DISTANCEONLY)) + facet_wrap(DISTANCEONLY~.) +
+                            labs(title="Linear Model for x1 and y1: DISTANCEONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=DISTANCEONLY)) + theme_bw() 
+```
+
+```{r Stratified by HBCU}
+CSC18_REG %<>% mutate(HBCU = as.factor(HBCU))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HBCU)) + 
+                            labs(title="Linear Model for x1 and y1: HBCU") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HBCU)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HBCU)) + facet_wrap(HBCU~.) +
+                            labs(title="Linear Model for x1 and y1: HBCU") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HBCU)) + theme_bw() 
+```
+
+```{r Stratified by PBI}
+CSC18_REG %<>% mutate(PBI = as.factor(PBI))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PBI)) + 
+                            labs(title="Linear Model for x1 and y1: PBI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PBI)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=PBI)) + facet_wrap(PBI~.) +
+                            labs(title="Linear Model for x1 and y1: PBI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=PBI)) + theme_bw() 
+```
+
+```{r Stratified by ANNHI}
+CSC18_REG %<>% mutate(ANNHI = as.factor(ANNHI))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ANNHI)) + 
+                            labs(title="Linear Model for x1 and y1: ANNHI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ANNHI)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=ANNHI)) + facet_wrap(ANNHI~.) +
+                            labs(title="Linear Model for x1 and y1: ANNHI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=ANNHI)) + theme_bw() 
+```
+
+```{r Stratified by TRIBAL}
+CSC18_REG %<>% mutate(TRIBAL = as.factor(TRIBAL))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=TRIBAL)) + 
+                            labs(title="Linear Model for x1 and y1: TRIBAL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=TRIBAL)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=TRIBAL)) + facet_wrap(TRIBAL~.) +
+                            labs(title="Linear Model for x1 and y1: TRIBAL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=TRIBAL)) + theme_bw() 
+```
+
+```{r Stratified by AANAPII}
+CSC18_REG %<>% mutate(AANAPII = as.factor(AANAPII))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=AANAPII)) + 
+                            labs(title="Linear Model for x1 and y1: AANAPII") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=AANAPII)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=AANAPII)) + facet_wrap(AANAPII~.) +
+                            labs(title="Linear Model for x1 and y1: AANAPII") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=AANAPII)) + theme_bw() 
+```
+
+```{r Stratified by HSI}
+CSC18_REG %<>% mutate(HSI = as.factor(HSI))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HSI)) + 
+                            labs(title="Linear Model for x1 and y1: HSI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HSI)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=HSI)) + facet_wrap(HSI~.) +
+                            labs(title="Linear Model for x1 and y1: HSI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=HSI)) + theme_bw() 
+```
+
+```{r Stratified by NANTI}
+CSC18_REG %<>% mutate(NANTI = as.factor(NANTI))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=NANTI)) + 
+                            labs(title="Linear Model for x1 and y1: NANTI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=NANTI)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=NANTI)) + facet_wrap(NANTI~.) +
+                            labs(title="Linear Model for x1 and y1: NANTI") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=NANTI)) + theme_bw() 
+```
+
+```{r Stratified by MENONLY}
+CSC18_REG %<>% mutate(MENONLY = as.factor(MENONLY))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=MENONLY)) + 
+                            labs(title="Linear Model for x1 and y1: MENONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=MENONLY)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=MENONLY)) + facet_wrap(MENONLY~.) +
+                            labs(title="Linear Model for x1 and y1: MENONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=MENONLY)) + theme_bw() 
+```
+
+```{r Stratified by WOMENONLY}
+CSC18_REG %<>% mutate(WOMENONLY = as.factor(WOMENONLY))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=WOMENONLY)) + 
+                            labs(title="Linear Model for x1 and y1: WOMENONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=WOMENONLY)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=WOMENONLY)) + facet_wrap(WOMENONLY~.) +
+                            labs(title="Linear Model for x1 and y1: WOMENONLY") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=WOMENONLY)) + theme_bw() 
+```
+
+```{r Stratified by RELAFFIL}
+CSC18_REG %<>% mutate(RELAFFIL = as.factor(RELAFFIL))
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=RELAFFIL)) + 
+                            labs(title="Linear Model for x1 and y1: RELAFFIL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=RELAFFIL)) + theme_bw() 
+
+CSC18_REG %>% ggplot(aes(IND_DEBT_MDN,med_dep)) + geom_point(aes(color=RELAFFIL)) + facet_wrap(RELAFFIL~.) +
+                            labs(title="Linear Model for x1 and y1: RELAFFIL") + stat_smooth(method="lm",formula=y~x,se=F,aes(color=RELAFFIL)) + theme_bw() 
+```
+
+
+## `r ftext('PARAMETRIC TEST: Simple Linear Regression and Test of Slope/Correlation.', ft)`
+
+|             This is where I will continue
+
+```{r}
+linear_model2 <- lm(med_dep~IND_DEBT_MDN,CSC18_REG)
+linear_model2
+summary(linear_model2)
+correl(CSC18_REG$med_dep,CSC18_REG$IND_DEBT_MDN,
+       method="pearson")
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

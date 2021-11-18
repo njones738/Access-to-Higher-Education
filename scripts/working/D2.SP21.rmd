@@ -1,0 +1,630 @@
+---
+title: "Deliverable Two"
+author: "Nathaniel Jones"
+output: word_document
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=12, fig.height=8)
+#install.packages("officedown")
+#install.packages("officer")
+#install.packages("magrittr")
+#install.packages("tidyverse") 
+
+library(tidyverse)
+library(magrittr)   # piping related. %<>% is "<-" + "and then". both assigns and pipes.
+library(officedown) # to change the text colors
+library(officer)    # used with officedown
+library(perm)
+library(jmuOutlier) # source of perm test for median and trimmed means.
+library(plyr)       # ddply
+ft <- fp_text(color = 'mediumorchid4', bold = TRUE) # change the color of text easily
+inline_hook <- function(x) {                # used in making the numbers print in decimal form instead of scientific notation
+  if (is.numeric(x)) {
+    format(x, digits = 11)
+  } else x 
+}
+knitr::knit_hooks$set(inline = inline_hook) # this makes the numbers not print in scientific notation during inline code.
+wrapper <- function(x) {
+  round(x,4)
+}
+```
+
+```{r read in dataset and set the mood, echo=F}
+# Import the 2018 College Scorecard data and tidy it up.
+CollegeSC18 <- read.csv("MERGED2018_19_PP.csv", stringsAsFactors = TRUE, na.strings = c("PrivacySuppressed","NULL","NaN","NA"))
+CollegeSC18 <- tibble(CollegeSC18)
+#CollegeSC18 %>% head(10)
+personal_Palette <- c("#999999","#bae600", "#E6c500", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#CC79A7","mediumpurple","mediumpurple4",
+                     "cornflowerblue","magenta3","royalblue4","orchid4","orchid3","orchid1","plum4","turquoise1","turquoise","turquoise4",
+                     "violet","plum3","plum1","aquamarine","aquamarine3","aquamarine4","cyan","cyan4","cyan3")
+cbPalette <- c("#999999", "#56B4E9", "#009E73", "#0072B2", "#CC79A7")
+
+set.seed(59914120)
+```
+
+```{r Creation of the Binary variables and the handling of missing data, include=F}
+CSC18 <- CollegeSC18 %>% filter(MAIN == 1) %>% select(INSTNM,PCTPELL,FTFTPCTPELL,PCTFLOAN,PREDDEG,HIGHDEG,CONTROL,LOCALE,ICLEVEL,OPENADMP,OPEFLAG,HCM2)
+
+CSC18 %<>% mutate("PCTPELL_CAT" = ifelse(is.na(PCTPELL)!=T,               # Check if missing. IF not True, THEN continue, ELSE go to **
+                                         ifelse(PCTPELL <= .5,0,          # Check Condition One, return 0 if true, 
+                                                1),                       # ELSE return 1
+                                         NA))
+#CSC18
+
+CSC18$PCTPELL_CAT <- as.factor(CSC18$PCTPELL_CAT)
+CSC18 %<>% filter(is.na(PCTPELL)!=T) %>% filter(PCTFLOAN > 0)
+
+PL_n <- sum(!is.na(CSC18$PCTPELL)) # `r PL_n`
+FL_n <- sum(!is.na(CSC18$PCTFLOAN)) # `r FL_n`
+iters <- 10000
+scalr <- 1
+```
+
+```{r inline objects, include=F, echo=F}
+Zero_data <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="0") # <= 50%
+One_data  <- subset(CSC18, subset = CSC18$PCTPELL_CAT=="1") # >  50%
+G1 <- One_data$PCTFLOAN
+G0 <- Zero_data$PCTFLOAN
+ks_test <- stats::ks.test(G0,G1,alternative="two.sided")
+ttst <- stats::t.test(G1,G0,alternative= "two.sided",mu=0, paired = F,var.equal=F,conf.level=.95)
+wilcox_test <- stats::wilcox.test(G1,G0,conf.int=T, exact=TRUE,alternative="two.sided",conf.level=.95)
+#CSC18 %>% filter(PCTPELL_CAT==1) %>% summarise(mean(PCTFLOAN))
+shap_wilk0 <- shapiro.test(Zero_data$PCTFLOAN)
+shap_wilk1 <- shapiro.test(One_data$PCTFLOAN)
+G1_n <- sum(!is.na(G1)) # `r CAT_n`
+G0_n <- sum(!is.na(G0)) # `r CAT_n`
+observed_test_stat_median <- abs(median(G1)-median(G0))
+difmeds <- rep(NA,iters)
+for (i in 1:iters){all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  difmeds[i] <- abs(median(shuffles[1:50])-median(shuffles[51:100]))}
+perm_median_hist <- hist(difmeds,cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+p_value_median <- mean(difmeds >= observed_test_stat_median)
+RMD.test <- function(samp1,samp2,direction=c('two.sided','less','greater')[1],nsamp=10000,nprt=0) {
+  devs1 <- samp1-median(samp1)
+  devs2 <- samp2-median(samp2)
+  devs <- c(devs1,devs2)
+  RMD <- mean(abs(devs1))/mean(abs(devs2))
+  if (direction[1]=='two.sided'){RMD <- max(1/RMD, RMD)}
+  RMDperms <- rep(NA,nsamp)
+  for (i in 1:nsamp){tempdevs <- devs[sample(length(devs),length(devs),replace=FALSE)] 
+                     RMDperms[i] <- mean(abs(tempdevs[1:length(devs1)]))/mean(abs(tempdevs[-(1:length(devs1))]))
+                     if (direction[1]=='two.sided') RMDperms[i] <- max(1/RMDperms[i], RMDperms[i])}
+  if (direction[1]=='greater') pVal <- mean(RMDperms>=RMD)
+  if (direction[1]=='less') pVal <- mean(RMDperms<=RMD)
+  if (direction[1]=='two.sided') pVal <- mean(RMDperms>=RMD)
+  if (nprt==0) {return(c(round(RMD,4),pVal))} else {
+    return(c(print(paste("The mean absolute deviation for the data in sample 1 is:", round(mean(abs(devs1)),2) )),print(paste("The mean absolute deviation for the data in sample 2 is:", round(mean(abs(devs2)),2) )),
+             print(paste("Test statistic:",round(RMD,4))),print(paste("Approximate p-value for ",direction[1],":  ",pVal,sep=""))))}}
+Ratio_MD <- RMD.test(G0,G1,direction="two.sided",nsamp=iters,nprt=0)
+```
+
+#### `r ftext('Background Information and Variable Description', ft)`
+
+Does the proportion of federal loan borrowers differ at institutions where the majority of undergraduate students are Pell recipients? The data used to test this hypothesis were two columns of data described in the table below. The variable PCTPELL is the percent of undergraduate students receiving a Pell grant. This variable was used to create a categorical variable with two levels separating institutions into the following groups:
+
+-   Institutions with more than 50% of their undergraduate population receiving a Pell grant will be referred to as having a majority Pell population and given a value of 1.
+-   Institutions with 50% or less of their undergraduate population receiving a Pell grant will be referred to as having a minority Pell population and given a value of 0.
+
++---------------+-------------------------------------------------------------------------------------------------------------------------+---------------+----------+
+| **Variable**  | **Definitions**                                                                                                         | **Data type** |  **n**   |
++===============+=========================================================================================================================+===============+==========+
+| *PCTPELL*     | The percent of undergraduate students receiving a Pell grant                                                            | Quantitative  | `r PL_n` |
++---------------+-------------------------------------------------------------------------------------------------------------------------+---------------+----------+
+| *PCTFLOAN*    | The percent of undergraduate students borrowing a federal loan                                                          | Quantitative  | `r FL_n` |
++---------------+-------------------------------------------------------------------------------------------------------------------------+---------------+----------+
+| *PCTPELL_CAT* | Binary indicator for the institutions that have more than 50% of their undergraduate population receiving a Pell grant. | 0 -- \<=50%   | `r G0_n` |
+|               |                                                                                                                         |               |          |
+|               |                                                                                                                         | 1 -- \>50%    | `r G1_n` |
++---------------+-------------------------------------------------------------------------------------------------------------------------+---------------+----------+
+
+: **Variable Definitions**
+
+This report compared the percent of undergraduate students borrowing a federal loan by the grouping of institutions created above. In this report, seven tests were performed to determine if the two groups of institutions differ in the percentage of federal loan borrowers. These tests were the following: Kolmogorov-Smirnov, Ratio Mean Difference, Wilcoxon Rank-sum, t-test, permutation test on the difference in two population means, permutation test on the difference in two population medians, and permutation test on the difference in two population trimmed means. 
+
++--------------+------------------------------------------------------------------------------------------------------------------------------------+
+| *Claim:*     | Institutions with a minority Pell population differ in the percentage of federal loan borrowers than institutions with a majority. |
++--------------+------------------------------------------------------------------------------------------------------------------------------------+
+| *Variables:* | PCTPELL_CAT and PCTFLOAN                                                                                                           |
++--------------+------------------------------------------------------------------------------------------------------------------------------------+
+
+: **Hypothesis**
+
+\newpage
+
+#### `r ftext('Data Visualization and Check for Normality', ft)`
+
+To begin, a categorical variable with two levels was created from the variable PCTPELL. This variable, labeled PCTPELL_CAT, was created by assigning the value of 1 to all institutions with more than 50% of the undergraduate population receiving a Pell grant. Inversely, institutions with 50% or less of their undergraduate population receiving a Pell grant were assigned a value of 0. It was found that 642 observations for the variable PCTFLOAN had a value of zero. After further research a conclusion was made to remove these observations. This conclusion was made after information from this [URL: http://www.collegescholarships.org/loans/community.htm](http://www.collegescholarships.org/loans/community.htm) was found. It was found that many community college students mistakenly believe that they are ineligible to receive financial aid and fail to fill out the Free Application for Federal Student Aid (FASFA).
+
+**DESCRIPTIVE STATISTICS:**
+
+```{r Descriptive Statistics, include=F,echo=F}
+DESC_G0 <- CSC18 %>% filter(PCTPELL_CAT == 0) %>% select(PCTFLOAN,PCTPELL_CAT) %>% summarise(Min_0 = wrapper(min(PCTFLOAN)),
+                                                                                             Mean_0 = wrapper(mean(PCTFLOAN)),
+                                                                                             Median_0 = wrapper(median(PCTFLOAN)),
+                                                                                             Max_0 = wrapper(max(PCTFLOAN)),
+                                                                                             NA_0 = wrapper(sum(is.na(PCTFLOAN))),
+                                                                                             N_0 = wrapper(sum(!is.na(PCTFLOAN))))
+DESC_G1 <- CSC18 %>% filter(PCTPELL_CAT == 1) %>% select(PCTFLOAN,PCTPELL_CAT) %>% summarise(Min_1 = wrapper(min(PCTFLOAN)),
+                                                                                             Mean_1 = wrapper(mean(PCTFLOAN)),
+                                                                                             Median_1 = wrapper(median(PCTFLOAN)),
+                                                                                             Max_1 = wrapper(max(PCTFLOAN)),
+                                                                                             NA_1 = wrapper(sum(is.na(PCTFLOAN))),
+                                                                                             N_1 = wrapper(sum(!is.na(PCTFLOAN))))
+```
+
+| Group 0      |    PCTFLOAN       | Group 1      |    PCTFLOAN       |
+|--------------|-------------------|--------------|-------------------|
+| Min          | `r DESC_G0[,1]`   | Min          | `r DESC_G1[,1]`   |
+| Median       | `r DESC_G0[,3]`   | Median       | `r DESC_G1[,3]`   |
+| Mean         | `r DESC_G0[,2]`   | Mean         | `r DESC_G1[,2]`   |
+| Max          | `r DESC_G0[,4]`   | Max          | `r DESC_G1[,4]`   |
+| Missing      | `r DESC_G0[,5]`   | Missing      | `r DESC_G1[,5]`   |
+| n            | `r DESC_G0[,6]`   | n            | `r DESC_G1[,6]`   |
+
+: Descriptive Statistics
+
+\newpage
+
+**HISTOGRAM:** A histogram for the percent of federal loan borrowers was created for the different PCTPELL_CAT categories. Figure 1 displays this histogram. To help visualize the results, two lines were placed on these graphs to represent the mean of each group. The `r ftext('red', fp_text(color = 'red'))` line represents the mean percent of federal loan borrowers at an institution with a minority Pell population while the `r ftext('blue', fp_text(color = 'blue'))` line represents the mean percent of federal loan borrowers at an institution with a majority Pell population. One can see a visual shift in the mean between the two categories.
+
+```{r Histogram of Percent of undergraduates receiving a Pell grant stratified by predominantly awarding bachelor degrees or not bachelor, echo=F,message=FALSE}
+mu <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.mean=mean(PCTFLOAN))
+ada <- plyr::ddply(CSC18, "PCTPELL_CAT", summarise, grp.median=median(PCTFLOAN))
+
+t_tle = "Figure 1: Histogram of the percent of federal loan borrowers stratified by the categories of PCTPELL_CAT. (n = 4423)"
+
+
+CSC18 %>% ggplot(aes(x=PCTFLOAN,fill=PCTPELL_CAT)) + xlab("Percent of federal loan borrowers.") + labs(title= t_tle) +
+                 geom_histogram(color="black",
+                                show.legend = F) + 
+                 stat_bin(color="black",
+                          binwidth=.1,
+                          closed="right") + 
+                 scale_fill_manual(name="group",
+                                   values=c("springgreen","cadetblue2"),
+                                   labels=c("0 - Minority Pell population (<=50%)","1 - Majority Pell population (>50%)")) + 
+                 facet_grid(PCTPELL_CAT ~ .) + 
+                 geom_vline(data=mu, 
+                            aes(xintercept=grp.mean, 
+                                color=PCTPELL_CAT),
+                            linetype="dashed",
+                            lwd=1.2,
+                            show.legend = F)# + 
+#                 geom_vline(data=ada, 
+#                            aes(xintercept=grp.median, 
+#                                color=c("pink","sandybrown")),
+#                            linetype="dashed",
+#                            lwd=1.2,
+#                            show.legend = F)
+#CollegeSC18 %>% filter(PCTFLOAN == 0 & MAIN==1) %>% select(INSTNM,PCTPELL,PCTFLOAN,OPEFLAG,NPT4_PUB,NPT4_PRIV,CONTROL,ICLEVEL)
+#CollegeSC18 %>% filter(PCTFLOAN == 0 & MAIN==1 & OPEFLAG > 1) %>% select(INSTNM,PCTPELL,PCTFLOAN,OPEFLAG,CONTROL,ICLEVEL)
+#CollegeSC18 %>% filter(PCTFLOAN == 0 & MAIN==1 & HCM2 == 1)
+```
+
+\newpage
+
+**BOXPLOT:** Figure 2 displays the stratified boxplot of the percent of federal loan borrowers for the two categories of PCTPELL_CAT. From this plot, one can visually see a difference in the percent of federal loan borrowers at institutions with a majority Pell population. The mean percent of federal loan borrowers at an institution with a majority was 55.2% while at institutions with a minority had 36.7%. Notably, the lower bound of the interquartile range for institutions with a majority Pell population is more than double the lower bound at institutions with a minority.
+
+```{r Boxplot of Percent of undergraduates receiving a Pell grant stratified by the bachelor or not bachelor, echo=F}
+boxplot(CSC18$PCTFLOAN~CSC18$PCTPELL_CAT,
+        names=c("0 - Pell Recipients (<=50%)","1 - Pell Recipients (>50%)"), 
+        main="Figure 2: Boxplot of the percent of undergraduates borrowing a federal loan stratified by the categories of PCTPELL_CAT. (n = 5065)", 
+        boxwex=0.4, 
+        xlab="PCTPELL_CAT", 
+        ylab="Percent of undergraduates undergraduates a federal loan",
+        cex.lab=1.5,
+        cex.main=1,
+        cex.axis=1.5,
+        col=sample(personal_Palette,2)
+        )
+
+# Plot the mean point
+points(2,mean(One_data$PCTFLOAN),pch=7)
+points(1,mean(Zero_data$PCTFLOAN),pch=7)
+
+# For the leftside boxplot
+text(y = boxplot.stats(Zero_data$PCTFLOAN)$stats, 
+     labels = paste(((boxplot.stats(Zero_data$PCTFLOAN)$stats)*100),"%",sep=" "), 
+     x = 1.34, 
+     cex = 1.5)
+#text(y = round(min(Zero_data$PCTFLOAN),3), 
+#     labels = paste((round(min(Zero_data$PCTFLOAN),3)*100),"%",sep=" "),
+#     x = 1.34, 
+#     cex = 1.5)
+text(y = round(mean(Zero_data$PCTFLOAN),3), 
+     labels = paste((round(mean(Zero_data$PCTFLOAN),3)*100),"%",sep=" "),
+     x = 0.67,
+     cex = 1.5)
+
+# For the rightside boxplot
+text(y = boxplot.stats(One_data$PCTFLOAN)$stats, 
+     labels = paste(((boxplot.stats(One_data$PCTFLOAN)$stats)*100),"%",sep=" "), 
+     x = 2.33, 
+     col = "black",
+     cex = 1.5)
+text(y = round(mean(One_data$PCTFLOAN),3), # leftside 60%
+     labels = paste((round(mean(One_data$PCTFLOAN),3)*100),"%",sep=" "), 
+     x = 1.67,
+     col = "black",
+     cex = 1.5)
+text(y = round(max(One_data$PCTFLOAN),3), 
+     labels = paste((round(max(One_data$PCTFLOAN),3)*100),"%",sep=" "), 
+     x =  2.33, 
+     col = "black", 
+     cex  =1.5)
+text(y = round(min(One_data$PCTFLOAN),3), 
+     labels = paste((round(min(One_data$PCTFLOAN),3)*100),"%",sep=" "),
+     x = 2.33, 
+     col = "black", 
+     cex = 1.5)
+
+```
+
+|   \n
+|   \n
+
+**NORMALITY CHECK:** With no clear visual evidence of normality coming from the histogram or boxplot, a Q-Q plot for each category was created and a Shapiro-Wilk's normality test was performed. Figure 3.A corresponds to the percent of undergraduate students borrowing a federal loan at institutions with a minority Pell population while figure 3.B corresponds to institutions with a majority. Both figures show strong deviation from the normal line at the tails, suggesting that neither group came from a normal population. The results of the Shapiro-Wilk normality test gave further evidence that the data is skewed. Since both p-values (`r wrapper(shap_wilk0$p.value)` for category zero and `r wrapper(shap_wilk1$p.value)` for category one) were less than the chosen level of confidence (5%), one can conclude that the data may not have come from a normally distributed population.
+
+```{r Check for normality: Q-Q plot and Shapiro-Wilks, echo=F}
+
+t_tle_FIG3A = paste("Figure 3.A: Q-Q plot for the percent of undergraduate federal loan borrowers attending institutions with a minority Pell population. (n = ",sum(!is.na(Zero_data$PCTFLOAN)),")",sep="")
+t_tle_FIG3B = paste("Figure 3.B: Q-Q plot for the percent of undergraduate federal loan borrowers attending institutions with a majority Pell population. (n = ",sum(!is.na(One_data$PCTFLOAN)),")",sep="")
+
+# QQ plot
+qqnorm(Zero_data$PCTFLOAN,main=t_tle_FIG3A,pch=19,cex.main=.95)
+qqline(Zero_data$PCTFLOAN,col = "steelblue")
+abline(v = 0, col="red")
+
+# QQ plot
+qqnorm(One_data$PCTFLOAN,main=t_tle_FIG3B,pch=19,cex.main=.95)
+qqline(One_data$PCTFLOAN,col = "steelblue")
+abline(v = 0, col="red")
+```
+
+\newpage
+
++--------------+---------------------------------------------------------------------------------------------------------+
+| **Label**    | **Definition**                                                                                          |
++==============+=========================================================================================================+
+| $$\mu_0$$    | The mean percent of federal loan borrowers at institutions with a minority Pell population.             |
++--------------+---------------------------------------------------------------------------------------------------------+
+| $$\mu_1$$    | The mean percent of federal loan borrowers at institutions with a majority Pell population.             |
++--------------+---------------------------------------------------------------------------------------------------------+
+| $$F_0(x)$$   | The CDF of percent of federal loan borrowers at institutions with a minority Pell population.           |
++--------------+---------------------------------------------------------------------------------------------------------+
+| $$F_1(x)$$   | The CDF of percent of federal loan borrowers at institutions with a majority Pell population.           |
++--------------+---------------------------------------------------------------------------------------------------------+
+| $$\sigma_0$$ | The variation in the percent of federal loan borrowers at institutions with a minority Pell population. |
++--------------+---------------------------------------------------------------------------------------------------------+
+| $$\sigma_1$$ | The variation in the percent of federal loan borrowers at institutions with a majority Pell population. |
++--------------+---------------------------------------------------------------------------------------------------------+
+
+: **Notation used in the hypotheses**
+
+|   \n
+
+#### `r ftext('Results and findings',ft)`
+
+|       A difference in the percent of federal loan borrowers at institutions with a majority Pell population and a minority Pell population was found. Seven tests were performed to test for a difference in distribution, variation, and center. The notable results are:
+
+-   The permutation test on the difference in medians showed that there is a `r paste((p_value_median*100),"%",sep="")` chance of receiving a difference that is equal to or greater than the observed difference of `r paste((observed_test_stat_median)*100,"%",sep="")`.\
+-   The data showed from the Wilcoxon Rank-sum test that the true difference in the center of the two distributions is between `r wrapper(wilcox_test$conf.int[1])` and `r wrapper(wilcox_test$conf.int[2])`.\
+-   The results of the ratio mean difference test found that institutions with a minority Pell population are `r Ratio_MD[1]` times more variable than institutions with majority.
+
+Notably the t-test, the permutation test on the difference in two population means, and the permutation test on the difference in two population trimmed means found very similar results to the permutation test on the difference in two population medians. The test on the medians was chosen due to the skew seen in the Q-Q plot in a previous section.
+
+\newpage
+
+#### `r ftext('Conclusion from the Kolmogorov-Smirnov test on the difference of shape, center, and spread.', ft)`
+
++-----+---------------------------------------------------------------------------+
+| H0: | The shape, center, and spread of the two distributions are not different. |
++-----+---------------------------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0=0$$                                                   |
++-----+---------------------------------------------------------------------------+
+| Ha: | The shape, center, and spread of the two distributions are different.     |
++-----+---------------------------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0\neq0$$                                                |
++-----+---------------------------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Kolmogorov-Smirnov, echo=F,message=F,warning=F}
+ks_test <- stats::ks.test(G0,G1,alternative="two.sided")
+```
+
+|       The Kolmogorov-Smirnov test showed that there is a `r paste(((ks_test$p.value)*100),"%",sep="")` chance of receiving a test statistic that is `r wrapper(ks_test$statistic)` or more. Such a small chance suggests that there are very few permutations that are greater than the observed test statistic. With this information there is enough evidence to conclude that at least one of the properties, either the shape, the center, or the spread, of the distribution is different.
+
+|      \n
+
+#### `r ftext('Conclusion from the RMD (Ratio Mean Difference) test', ft)`
+
++-----+-----------------------------------------------------------------------+
+| H0: | The variation in the distribution of the two groups is not different. |
++-----+-----------------------------------------------------------------------+
+|     | $$\sigma_1(x)_1-\sigma_0(x)_0=0$$                                     |
++-----+-----------------------------------------------------------------------+
+| Ha: | The variation in the distribution of the two groups is different.     |
++-----+-----------------------------------------------------------------------+
+|     | $$\sigma_1(x)_1-\sigma_0(x)_0\neq0$$                                  |
++-----+-----------------------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Ratio Mean Difference, echo=F,message=F,warning=F}
+RMD.test <- function(samp1,samp2,direction=c('two.sided','less','greater')[1],nsamp=10000,nprt=0) {
+  devs1 <- samp1-median(samp1)
+  devs2 <- samp2-median(samp2)
+  devs <- c(devs1,devs2)
+  RMD <- mean(abs(devs1))/mean(abs(devs2))
+  if (direction[1]=='two.sided'){
+                                 RMD <- max(1/RMD, RMD)
+  }
+  RMDperms <- rep(NA,nsamp)
+  for (i in 1:nsamp){
+                     tempdevs <- devs[sample(length(devs),length(devs),replace=FALSE)] 
+                     RMDperms[i] <- mean(abs(tempdevs[1:length(devs1)]))/mean(abs(tempdevs[-(1:length(devs1))]))
+                     if (direction[1]=='two.sided') RMDperms[i] <- max(1/RMDperms[i], RMDperms[i])
+  }
+  if (direction[1]=='greater') pVal <- mean(RMDperms>=RMD)
+  if (direction[1]=='less') pVal <- mean(RMDperms<=RMD)
+  if (direction[1]=='two.sided') pVal <- mean(RMDperms>=RMD)
+  if (nprt==0) {
+                return(c(round(RMD,4),pVal))
+  } else {
+    return(c(print(paste("The mean absolute deviation for the data in sample 1 is:", round(mean(abs(devs1)),2) )),
+             print(paste("The mean absolute deviation for the data in sample 2 is:", round(mean(abs(devs2)),2) )),
+             print(paste("Test statistic:",round(RMD,4))),
+             print(paste("Approximate p-value for ",direction[1],":  ",pVal,sep=""))))
+  }
+}
+
+Ratio_MD <- RMD.test(G0,G1,direction="two.sided",nsamp=iters,nprt=0)
+```
+
+|       The results of the ratio mean difference test showed, after `r iters` iterations, a test statistic of `r Ratio_MD[1]`. This test statistic means that institutions with a minority Pell population are `r Ratio_MD[1]` times more variable than institutions with a majority. There is a `r paste(((Ratio_MD[2])*100),"%",sep="")` chance of receiving a test statistic of `r Ratio_MD[1]` or more in two-tails. With this information, we can conclude that the variation in the percent of federal loan borrowers at institutions with more than 50% of their undergraduate population receiving a Pell grant is different from institutions with 50% or less of their undergraduate population receiving a Pell grant.
+
+\newpage
+
+#### `r ftext('Conclusion from the Wilcoxon Rank Sum Test on the Difference of Two Population Centers', ft)`
+
++-----+---------------------------------------------------------------------+
+| H0: | The distributions of the ranked data do not have different centers. |
++-----+---------------------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0=0$$                                             |
++-----+---------------------------------------------------------------------+
+| Ha: | The distributions of the ranked data have different centers.        |
++-----+---------------------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0\neq0$$                                          |
++-----+---------------------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Wilcoxon Rank Sum, echo=F,message=F}
+Zero_data <- CollegeSC18 %>% filter(OMAWDP8_ALL > .5)
+One_data <- CollegeSC18 %>% filter(OMAWDP8_ALL <= .5)
+G1 <- One_data$BBRR2_FED_UG_DFLT
+G0 <- Zero_data$BBRR2_FED_UG_DFLT
+
+median(G1, na.rm = T) * 100
+median(G0, na.rm = T) * 100
+
+wilcox_test <- stats::wilcox.test(G1,G0,conf.int=T,
+                                  alternative="two.sided",conf.level=.95)
+wilcox_test
+
+```
+
+|       The data showed a Wilcoxon test statistic (`r wilcox_test$statistic`) with a very small p-value (`r wrapper(wilcox_test$p.value)`). This suggests that there was a very small number of rank sums that were larger than the observed rank sum of `r wilcox_test$statistic`. With this information, there is enough evidence to conclude that the distributions of the ranked data have different centers. At a confidence level of 95%, the data showed that the true difference in the center of the two distributions is between `r wrapper(wilcox_test$conf.int[1])` and `r wrapper(wilcox_test$conf.int[2])`. This test shows that there is a `r paste(wrapper((wilcox_test$p.value)*100),"%",sep="")` chance observing a difference in the center of the two groups' distributions that is greater than `r paste(wrapper((wilcox_test$estimate)*100),"%",sep="")` or more.
+
+#### `r ftext('Conclusions from the Parametric t-test on the difference of two population centers', ft)`
+
++-----+----------------------------------------------------------------+
+| H0: | There is not a difference between the means of the two groups. |
++-----+----------------------------------------------------------------+
+|     | $$\mu_1-\mu_0=0$$                                              |
++-----+----------------------------------------------------------------+
+| Ha: | There is a difference between the means of the two groups.     |
++-----+----------------------------------------------------------------+
+|     | $$\mu_1-\mu_0\neq0$$                                           |
++-----+----------------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Parametric t-test, echo=F}
+ttst <- stats::t.test(G1,G0,
+              alternative= "two.sided",
+              mu=0, paired = F, 
+              var.equal=F,
+              conf.level=.95)
+```
+
+|       The results of this parametric t-test showed that the consistency of the data with the null hypothesis was `r paste(wrapper((ttst$p.value)*100),"%",sep="")`. It was observed that institutions with a minority Pell population had a mean percent of `r wrapper(as.numeric(ttst$estimate[2]))` federal loan borrowers while institutions with a majority had a mean percent of `r wrapper(as.numeric(ttst$estimate[1]))` federal loan borrowers. Thus, there is a `r paste(wrapper((ttst$p.value)*100),"%",sep="")` chance of observing the difference in the means of the two groups to be `r wrapper(abs(as.numeric(ttst$estimate[2])-as.numeric(ttst$estimate[1])))` or more when the two groups have the same mean test score. Since this p-value shows that it is very unlikely to receive a difference in the mean larger than the one observed in this sample, there is enough evidence to conclude that there is a difference between the mean of the two groups. In fact, at a confidence level of 95%, the data shows that institutions with a majority Pell population have between `r paste((wrapper(abs(as.numeric(ttst$conf.int[1])))*100),"%",sep="")` and `r paste((wrapper(abs(as.numeric(ttst$conf.int[2])))*100),"%",sep="")` more undergraduate federal loan borrowers than institutions with a minority.
+
+\newpage
+
+#### `r ftext('Conclusions from the Permutation Test on the Difference of Two Population Means', ft)`
+
++-----+--------------------------------------------------------+
+| H0: | The distributions of the two groups are not different. |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0=0$$                                |
++-----+--------------------------------------------------------+
+| Ha: | The distributions of the two groups are different.     |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0\neq0$$                             |
++-----+--------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Perm test difference in means, echo=F,include=F}
+perm_Mean <- permTS(G1,G0,
+                    method = "exact.mc",
+                    alternative = "two.sided",
+                    control=permControl(nmc=iters,seed=59911402))
+
+observed_test_stat_mean <- abs(mean(G1)-mean(G0))
+
+diff_mean <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  diff_mean[i] <- abs(mean(shuffles[1:50])-mean(shuffles[51:100]))
+}
+
+perm_mean_hist <- hist(diff_mean, 
+                       cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                       cex.axis=1.5,
+                       cex.main=1.5#,
+                       #breaks=seq(min(diff_mean),max(diff_mean),by=.05)
+)
+p_value_mean <- mean(diff_mean >= observed_test_stat_mean)
+```
+
+```{r plot histogram: Mean Perm, echo=F}
+observed_test_stat_mean <- abs(mean(G1)-mean(G0))
+
+diff_mean <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  diff_mean[i] <- abs(mean(shuffles[1:50])-mean(shuffles[51:100]))
+}
+
+perm_mean_hist <- hist(diff_mean, 
+                       cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                       cex.axis=1.5,
+                       cex.main=1.5#,
+                       #breaks=seq(min(diff_mean),max(diff_mean),by=.05)
+)
+
+plot(perm_mean_hist,col="cadetblue1",xlim=c(0,.3),main="Histogram for the permutation test on the difference in mean")
+abline(v=observed_test_stat_mean,col="blue",lty=1, lwd=5)
+text(observed_test_stat_mean - observed_test_stat_mean*.178, 1525*scalr, paste("Observed Test statistic of ",round(observed_test_stat_mean,4),sep=""))
+rect(observed_test_stat_mean,0,.3,1500*scalr,col=alpha("red",0))
+text(.26, 975*scalr, "Difference in mean")
+text(.26, 913*scalr, "greater than or equal")
+text(.26, 848*scalr, "to the observed difference")
+```
+
+|       After `r iters` simulations at a confidence level of 99%, the data showed that the true p-value is anywhere from `r paste((perm_Mean$p.conf.int[1])*100,"%",sep="")` to `r paste(wrapper((perm_Mean$p.conf.int[2])*100),"%",sep="")`. Using the estimate from the sample, there is a `r paste(wrapper(as.numeric(p_value_mean)*100),"%",sep="")` chance that one will observe that the difference in the mean percent of federal loan borrowers at institutions with a majority of their undergraduates receiving a Pell grant is `r paste(wrapper(as.numeric(observed_test_stat_mean)*100),"%",sep="")` more than institutions with a minority of their undergraduates receiving a Pell grant when the two groups have the same mean test score. This test suggests that the distributions of the two groups are different and the values that are found most typically are group specific. Specifically, institutions with a majority Pell population typically have a higher percentage of federal loan borrowers than institutions with a minority.
+The histogram above displays the results of the permutation test on the difference in means. The blue line is placed on the observed test statistic which is the difference between the means of the two groups. The box to the right of the blue line contains all the permuted test statistics that were greater than or equal to the observed. As one can see, the box is nearly empty. This visually shows how extreme the observed sample is in comparison to when the two groups have the same mean test score.
+
+#### `r ftext('Conclusions from the Permutation Test on the Difference of Two Population Medians', ft)`
+
++-----+--------------------------------------------------------+
+| H0: | The distributions of the two groups are not different. |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0=0$$                                |
++-----+--------------------------------------------------------+
+| Ha: | The distributions of the two groups are different.     |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0\neq0$$                             |
++-----+--------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Perm test difference in medians, echo=F,include=F}
+observed_test_stat_median <- abs(median(G1)-median(G0))
+
+difmeds <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  difmeds[i] <- abs(median(shuffles[1:50])-median(shuffles[51:100]))
+}
+
+perm_median_hist <- hist(difmeds,
+                         cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                         cex.axis=1.5,
+                         cex.main=1.5)
+p_value <- mean(difmeds >= observed_test_stat_median)
+```
+
+```{r plot histogram: Median Perm, echo=F}
+plot(perm_median_hist,col="cadetblue1",main="Histogram for the permutation test on the difference in median",xlim=c(0,.35))
+abline(v=observed_test_stat_median,col="blue",lty=1, lwd=5)
+text(observed_test_stat_median - observed_test_stat_median*.178, 2452*scalr, paste("Observed Test statistic of ",observed_test_stat_median,sep=""))
+rect(observed_test_stat_median,0,.35,2400*scalr,col=alpha("red",0))
+text(.29, 1500*scalr, "Difference in medians")
+text(.29, 1433*scalr, "greater than or equal")
+text(.29, 1369*scalr, "to the observed difference")
+```
+
+|       After `r iters` simulations, the data showed that the true p-value is `r paste(p_value,sep="")`. This suggests that there is a `r paste((p_value*100),"%",sep="")` of chance of observing a difference in the medians of the two groups that is equal to `r paste((observed_test_stat_median)*100,"%",sep="")` or greater. With this information, there is evidence to conclude that the distribution of the percent of federal loan borrowers at institutions with a majority Pell population is different from the distribution of the percent of federal loan borrowers at institutions with a minority population.
+The histogram above is of similar form to the one under the permutation test for the mean. This plot has the blue line placed in the position of the observed test statistic with a box outlining the region of permuted test statistics that are greater than or equal to the observed. Since very few permuted test statistics were more extreme than the observed test statistic, there is a difference between the distributions of the two groups.
+
+\newpage
+
+#### `r ftext('Conclusion from Permutation test on the difference of two population trimmed means', ft)`
+
++-----+--------------------------------------------------------+
+| H0: | The distributions of the two groups are not different. |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0=0$$                                |
++-----+--------------------------------------------------------+
+| Ha: | The distributions of the two groups are different.     |
++-----+--------------------------------------------------------+
+|     | $$F_1(x)_1-F_0(x)_0\neq0$$                             |
++-----+--------------------------------------------------------+
+
+: *Hypothesis*
+
+```{r Perm test difference in Trim means, echo=F,include=F}
+test_stat_TRIM <- (mean(G1,trim=.1)-mean(G0,trim=.1))
+perm_TRIM <- jmuOutlier::perm.test(G1,G0,
+                                   stat=mean, trim=0.10,     # trim by 10%
+                                   alternative="two.sided",
+                                   all.perms=T, 
+                                   paired=F, 
+                                   plot=F,
+                                   num.sim=iters)
+
+```
+
+```{r Perm test difference in TRIMMED means, echo=F,include=F}
+observed_test_stat_TRIM <- abs(mean(G1,trim=.15)-mean(G0,trim=.15))
+
+diff_TRIM <- rep(NA,iters)
+
+for (i in 1:iters){
+  all_values <- c(G1,G0)
+  shuffles <- sample(all_values,length(all_values),replace=FALSE)
+  diff_TRIM[i] <- abs(mean(shuffles[1:50],trim=.15)-mean(shuffles[51:100],trim=.15))
+}
+
+perm_TRIM_hist <- hist(diff_TRIM,
+                         cex.lab=1.5, #changes the size of BOTH word labels for the x and y axes
+                         cex.axis=1.5,
+                         cex.main=1.5)
+p_value <- mean(diff_TRIM>= observed_test_stat_TRIM)
+
+max(diff_TRIM)
+```
+
+```{r plot histogram: TRIM Perm, echo=F}
+plot(perm_TRIM_hist,xlim=c(0,.35),col="cadetblue1",main="Histogram for the permutation test on the difference in trimmed means",)
+abline(v=observed_test_stat_TRIM,col="blue",lty=1, lwd=5)
+text(observed_test_stat_TRIM - observed_test_stat_TRIM*.178, 1200*(scalr), paste("Observed Test statistic of ",round(observed_test_stat_TRIM,4),sep=""))
+rect(observed_test_stat_TRIM,0,.35,1200*(scalr),col=alpha("red",0))
+text(.292, 900*(scalr), "Difference in trimmed means")
+text(.292, 835*(scalr), "greater than or equal")
+text(.292, 775*(scalr), "to the observed difference")
+```
+
+|       This test is similar to the permutation test for the difference in group means except 15% of the extreme observations are 'trimmed' before the test. This test found that there is a `r paste((p_value*100),"%",sep="")` of chance of observing a difference in the trimmed means of the two groups that is equal to `r paste(wrapper(observed_test_stat_TRIM)*100,"%",sep="")` or greater. This suggests that the distributions of the two groups are different even if we trim 15% of the most extreme observations before running the test.
+The histogram displayed above is in the same format as the last two permutation tests. The blue line represents the observed test statistic and the box to the right of this line contains the region of permuted test statistics that are greater than or equal to the observed test statistic. One can see that the observed statistic is very extreme compared to the majority of permuted statistics, suggesting that the distributions are very different.
+
+```{r}
+CollegeSC18 %>%
+    select(IND_DEBT_MDN, DEP_DEBT_MDN, PLUS_DEBT_INST_MD) %>%
+    mutate(med_debt = DEP_DEBT_MDN + PLUS_DEBT_INST_MD) %>%
+    summarise(ind_debt = median(IND_DEBT_MDN, na.rm = T),
+              dep_debt = median(med_debt, na.rm = T))
+```
