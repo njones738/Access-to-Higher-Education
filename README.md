@@ -7,7 +7,7 @@ The purpose of this project is to study institutions with a majority of their st
 - __Tools used:__    
 R was used to conduct parametric and nonparametric tests, clean and manipulate parameters, and visualize the data. Packages such as tidyverse, ggplot, magrittr, jmuoutliers, perms, and stats were used.
 - __Results:__    
-In 2016, the Brookings institute found that Pell recipients attended colleges with a higher loan default rate and a lower graduation rate. This project verified that the results the Brookings institute found in 2016 were still true for the 2018-2019 school year. In addition, I found that majority Pell institutions had a higher dropout rate and that there is an unequal relationship between the typical amount of debt accumulated by an independent and dependent student. In future research, I will explore this relationship, as well as continue in my exploration of the outcomes that we are seeing in majority Pell institutions.
+In 2016, the Brookings institute found that Pell recipients attended colleges with a higher loan default rate and a lower graduation rate. This project verified that the results the Brookings institute found in 2016 were still true for the 2017-2018 school year. In addition, I found that majority Pell institutions had a higher dropout rate and that there is an unequal relationship between the typical amount of debt accumulated by an independent and dependent student. In future research, I will explore this relationship, as well as continue in my exploration of the outcomes that we are seeing in majority Pell institutions.
 
 ## Questions
 
